@@ -17,7 +17,7 @@ import (
 )
 
 type Student struct {
-	ID         uint    `json:"id" gorm:"primaryKey"`
+	ID         uint64  `json:"id" gorm:"primaryKey"`
 	Name       string  `json:"name"`
 	Age        int     `json:"age"`
 	Cgpa       float32 `json:"cgpa"`
@@ -67,6 +67,14 @@ func main() {
 	app.Post("/students", func(c fiber.Ctx) error {
 		var student Student
 		c.Bind().Body(&student)
+		student.AdmissionDate = time.Now()
+		student.UpdatedAt = time.Now()
+
+		// With exact time
+		// loc, _ := time.LoadLocation("Asia/Dhaka")
+		// student.AdmissionDate = time.Now().In(loc)	
+		// student.UpdatedAt = time.Now().In(loc)
+
 		if err:= db.Create(&student).Error; err!=nil{
 			return c.Status(500).JSON(fiber.Map{"message": err.Error()})
 		}
@@ -78,6 +86,12 @@ func main() {
 		var student Student
 		c.Bind().Body(&student)
 		db.Model(&Student{}).Where("id = ?", sId).Updates(&student)
+
+		// It will update multiple fields of multiple records
+		// db.Model(&Student{}).Where("age = ?", 25).Updates(&student)
+
+		// Updates multiple columns in the row where id = sId
+		// db.Model(&Student{}).Where("id = ?", sId).Updates(Student{name: "Updated", age:30})
 		return c.JSON(fiber.Map{"message": "Student data updated!"})
 	})
 

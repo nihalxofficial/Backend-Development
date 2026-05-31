@@ -523,6 +523,179 @@ LEFT JOIN courses c     ON e.course_id = c.id;
 
 ---
 
+## 🔗➕ JOIN with GROUP BY, HAVING & Aggregates
+
+> Using the same `students` and `departments` tables from One-to-Many above.
+
+---
+
+### Example 1 — Count students per department
+
+```sql
+SELECT d.name AS department, COUNT(s.id) AS total_students
+FROM departments d
+INNER JOIN students s ON s.department_id = d.id
+GROUP BY d.name
+ORDER BY total_students DESC;
+```
+
+**Result:**
+| department | total_students |
+|---|---|
+| Computer Science | 2 |
+| Electrical | 2 |
+| Mathematics | 1 |
+
+> 🧠 `JOIN` brings the department name. `COUNT` counts students. `GROUP BY` groups per department.
+
+---
+
+### Example 2 — Average CGPA per department
+
+```sql
+SELECT d.name AS department, ROUND(AVG(s.cgpa), 2) AS avg_cgpa
+FROM departments d
+INNER JOIN students s ON s.department_id = d.id
+GROUP BY d.name
+ORDER BY avg_cgpa DESC;
+```
+
+**Result:**
+| department | avg_cgpa |
+|---|---|
+| Computer Science | 3.78 |
+| Electrical | 3.51 |
+| Mathematics | 3.45 |
+
+> 🧠 `AVG` calculates average CGPA. `ROUND(..., 2)` keeps 2 decimal places.
+
+---
+
+### Example 3 — Only departments where avg CGPA >= 3.5 (HAVING)
+
+```sql
+SELECT d.name AS department,
+       COUNT(s.id)        AS total_students,
+       ROUND(AVG(s.cgpa), 2) AS avg_cgpa
+FROM departments d
+INNER JOIN students s ON s.department_id = d.id
+GROUP BY d.name
+HAVING AVG(s.cgpa) >= 3.5
+ORDER BY avg_cgpa DESC;
+```
+
+**Result:**
+| department | total_students | avg_cgpa |
+|---|---|---|
+| Computer Science | 2 | 3.78 |
+| Electrical | 2 | 3.51 |
+
+> 🧠 `HAVING AVG(...) >= 3.5` filters out groups (departments) where average CGPA is below 3.5. Mathematics (3.45) is excluded.
+
+---
+
+### Example 4 — Highest & lowest CGPA per department
+
+```sql
+SELECT d.name AS department,
+       MAX(s.cgpa) AS highest_cgpa,
+       MIN(s.cgpa) AS lowest_cgpa
+FROM departments d
+INNER JOIN students s ON s.department_id = d.id
+GROUP BY d.name
+ORDER BY highest_cgpa DESC;
+```
+
+**Result:**
+| department | highest_cgpa | lowest_cgpa |
+|---|---|---|
+| Computer Science | 3.85 | 3.70 |
+| Electrical | 3.92 | 3.10 |
+| Mathematics | 3.45 | 3.45 |
+
+---
+
+### Example 5 — Departments with more than 1 student AND avg CGPA > 3.5
+
+```sql
+SELECT d.name AS department,
+       COUNT(s.id)           AS total_students,
+       ROUND(AVG(s.cgpa), 2) AS avg_cgpa,
+       MAX(s.cgpa)           AS top_cgpa
+FROM departments d
+INNER JOIN students s ON s.department_id = d.id
+GROUP BY d.name
+HAVING COUNT(s.id) > 1 AND AVG(s.cgpa) > 3.5
+ORDER BY avg_cgpa DESC;
+```
+
+**Result:**
+| department | total_students | avg_cgpa | top_cgpa |
+|---|---|---|---|
+| Computer Science | 2 | 3.78 | 3.85 |
+| Electrical | 2 | 3.51 | 3.92 |
+
+> 🧠 Multiple conditions in `HAVING` work just like `WHERE` — use `AND` / `OR`.
+
+---
+
+### Example 6 — Many-to-Many: count enrollments per course
+
+> Using `students`, `courses`, and `enrollments` tables.
+
+```sql
+SELECT c.name AS course,
+       COUNT(e.student_id) AS total_enrolled,
+       c.fee
+FROM courses c
+INNER JOIN enrollments e ON e.course_id = c.id
+GROUP BY c.name, c.fee
+ORDER BY total_enrolled DESC;
+```
+
+**Result:**
+| course | total_enrolled | fee |
+|---|---|---|
+| Web Development | 2 | 299.99 |
+| Data Science | 2 | 499.99 |
+| Graphic Design | 1 | 199.99 |
+
+---
+
+### Example 7 — Many-to-Many: students enrolled in more than 1 course
+
+```sql
+SELECT s.name,
+       COUNT(e.course_id) AS courses_enrolled
+FROM students s
+INNER JOIN enrollments e ON e.student_id = s.id
+GROUP BY s.name
+HAVING COUNT(e.course_id) > 1
+ORDER BY courses_enrolled DESC;
+```
+
+**Result:**
+| name | courses_enrolled |
+|---|---|
+| Ahmed Hassan | 2 |
+| Sara Islam | 2 |
+
+> 🧠 Ravi is excluded because he enrolled in only 1 course.
+
+---
+
+### Quick Summary
+
+| Clause | Role |
+|---|---|
+| `JOIN` | Combines rows from multiple tables |
+| `GROUP BY` | Groups combined rows by a column |
+| `COUNT / SUM / AVG / MAX / MIN` | Calculates one value per group |
+| `HAVING` | Filters groups (like `WHERE` but after grouping) |
+| `ORDER BY` | Sorts the final result |
+
+---
+
 ## 🧠 Query Order of Execution
 
 ```sql

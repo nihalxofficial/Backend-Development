@@ -24,12 +24,12 @@ export default function SignupPage() {
       password: userData.password as string,
     });
     if(data){
-      // toast.success("SignUp successful 🎉")
+      toast.success("SignUp successful 🎉")
       console.log(data);
       router.push("/")
     }
     if(error){
-      // toast.error(error.message)
+      toast.error(error.message)
       console.log(error);
     }
   };

@@ -3,11 +3,35 @@
 import { useState } from "react";
 import { Person, EyeSlash, Eye } from "@gravity-ui/icons";
 import { Button, Checkbox, Link, Form, Input } from "@heroui/react";
+import { toast } from "react-toastify";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [isVisible, setIsVisible] = useState(false);
 
   const toggleVisibility = () => setIsVisible(!isVisible);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const formData = new FormData(e.currentTarget);
+      const userData = Object.fromEntries(formData.entries());
+  
+      const { data, error } = await authClient.signIn.email({
+        email: userData.email as string,
+        password: userData.password as string,
+      });
+      if(data){
+        toast.success("Login successful 🎉")
+        console.log(data);
+        router.push("/")
+      }
+      if(error){
+        toast.error(error.message)
+        console.log(error);
+      }
+    }
 
   return (
     <div className="dark min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-50 p-4 transition-colors duration-300">
@@ -30,7 +54,7 @@ export default function LoginPage() {
 
           {/* Form section */}
           <div className="px-6 py-5">
-            <Form className="w-full flex flex-col gap-3">
+            <Form onSubmit={onSubmit} className="w-full flex flex-col gap-3">
               
               {/* Email */}
               <Input

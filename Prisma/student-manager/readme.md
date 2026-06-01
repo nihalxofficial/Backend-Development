@@ -170,6 +170,8 @@ export default defineConfig({
 ### 10. Update `prisma/schema.prisma`
 
 > In Prisma 7: provider is `prisma-client` (not `prisma-client-js`), `output` is required, and `url` is removed from schema — it lives in `prisma.config.ts`.
+>
+> These are the **Better Auth tables** — same models used by your Next.js frontend so they share the same database.
 
 ```prisma
 generator client {
@@ -181,11 +183,65 @@ datasource db {
   provider = "postgresql"
 }
 
+// --- Better Auth tables (same as frontend) ---
 model User {
-  id    Int    @id @default(autoincrement())
-  name  String
-  email String @unique
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+  sessions      Session[]
+  accounts      Account[]
 }
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+}
+
+// --- Add your own models below ---
+// model Product {
+//   id        String   @id @default(uuid())
+//   name      String
+//   userId    String
+//   user      User     @relation(fields: [userId], references: [id])
+//   createdAt DateTime @default(now())
+// }
 ```
 
 ---

@@ -99,7 +99,7 @@ Replace `tsconfig.json` content with:
    - **Project Name** → `my-app`
    - **Database Name** → `mydb`
 4. Click **Create Project**
-5. Go to **Dashboard → Connection String → Select "Prisma"**
+5. Go to **Dashboard → Connection String**
 6. Copy the URL — looks like:
 
 ```
@@ -134,7 +134,10 @@ DATABASE_URL="postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/mydb?ssl
 node_modules/
 dist/
 .env
+src/generated/
 ```
+
+> `src/generated/` should be in `.gitignore` — always regenerate it after cloning.
 
 ---
 
@@ -166,11 +169,11 @@ export default defineConfig({
 
 ### 10. Update `prisma/schema.prisma`
 
-> In Prisma 7, `url` is removed from schema — it lives in `prisma.config.ts` instead.
+> In Prisma 7: provider is `prisma-client` (not `prisma-client-js`), `output` is required, and `url` is removed from schema — it lives in `prisma.config.ts`.
 
 ```prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
@@ -187,14 +190,14 @@ model User {
 
 ---
 
-### 11. Run Migration
+### 11. Push Schema to Database
 
 ```bash
-npx prisma migrate dev --name init
+npx prisma db push
 ```
 
-> This creates the table in your Neon database AND automatically runs `prisma generate` for you.
-> You can verify the table was created in **Neon Dashboard → Tables**.
+> This creates the tables in your Neon database.
+> You can verify in **Neon Dashboard → Tables**.
 
 ---
 
@@ -204,18 +207,22 @@ npx prisma migrate dev --name init
 npx prisma generate
 ```
 
-> **This is the step that creates `src/generated/prisma/`** — the folder your `prisma.ts` imports from.
-> `migrate dev` runs this automatically, but you must run it manually whenever you:
-> - Change anything in `schema.prisma`
-> - Clone the project fresh on a new machine (the generated folder is not committed to Git)
-> - See the error `Cannot find module './generated/prisma'`
+> **This creates `src/generated/prisma/`** — the folder your `prisma.ts` imports from.
 
-After running it, you should see the folder:
+**If models are missing after generate, always do a clean regenerate:**
+
+```bash
+rm -rf src/generated/prisma
+npx prisma generate
+```
+
+After running it, you should see:
 
 ```
 src/
 └── generated/
-    └── prisma/        ← created by `prisma generate`
+    └── prisma/
+        ├── client.ts      ← import PrismaClient from here
         ├── index.d.ts
         ├── index.js
         └── ...
@@ -226,9 +233,10 @@ src/
 ### 13. Create `src/prisma.ts`
 
 > In Prisma 7, you **must** pass a driver adapter — `new PrismaClient()` alone will crash.
+> Import from `./generated/prisma/client` — not `./generated/prisma` or `@prisma/client`.
 
 ```ts
-import { PrismaClient } from './generated/prisma';
+import { PrismaClient } from './generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import 'dotenv/config';
 
@@ -259,17 +267,27 @@ const PORT = process.env.PORT || 3000;
 
 // GET all users
 app.get('/users', async (req: Request, res: Response) => {
-  const users = await prisma.user.findMany();
-  res.json(users);
+  try {
+    const users = await prisma.user.findMany();
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: String(error) });
+  }
 });
 
 // POST create user
 app.post('/users', async (req: Request, res: Response) => {
-  const { name, email } = req.body;
-  const user = await prisma.user.create({
-    data: { name, email },
-  });
-  res.json(user);
+  try {
+    const { name, email } = req.body;
+    const user = await prisma.user.create({
+      data: { name, email },
+    });
+    res.json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: String(error) });
+  }
 });
 
 app.listen(PORT, () => {
@@ -322,7 +340,8 @@ curl http://localhost:3000/users
 | DB URL location | `schema.prisma` | `prisma.config.ts` |
 | Driver adapter | Optional | **Required** |
 | `new PrismaClient()` | Works alone | Must pass `{ adapter }` |
-| Import path | `@prisma/client` | `./generated/prisma` |
+| Import path | `@prisma/client` | `./generated/prisma/client` |
+| Generator provider | `prisma-client-js` | `prisma-client` |
 | `tsconfig.json` | No `include` needed | Must add `"include": ["src/**/*"]` |
 
 ---
@@ -330,20 +349,22 @@ curl http://localhost:3000/users
 ## Quick Command Reference
 
 ```bash
-npx prisma init                    # Initialize Prisma
-npx prisma migrate dev --name init # Create & run migration (also runs generate)
-npx prisma generate                # Regenerate client after schema changes
-npx prisma studio                  # Open visual DB browser
-npm run dev                        # Start dev server
+npx prisma init                 # Initialize Prisma
+npx prisma db push              # Push schema changes to database
+npx prisma generate             # Regenerate client after schema changes
+rm -rf src/generated/prisma && npx prisma generate  # Clean regenerate (fixes missing models)
+npx prisma studio               # Open visual DB browser
+npm run dev                     # Start dev server
 ```
 
 ---
 
-## When to Run `prisma generate`
+## When to Run Commands
 
-| Situation | Run generate? |
+| Situation | Commands |
 |---|---|
-| After `prisma migrate dev` | No — migrate runs it automatically |
-| After editing `schema.prisma` without migrating | Yes |
-| After cloning the project on a new machine | Yes — generated folder is in `.gitignore` |
-| Getting `Cannot find module './generated/prisma'` | Yes — this is always the fix |
+| Changed `schema.prisma` | `npx prisma db push` → `npx prisma generate` |
+| Models missing after generate | `rm -rf src/generated/prisma` → `npx prisma generate` |
+| Changed TypeScript only | Nothing needed |
+| Cloned project on new machine | `npm install` → `npx prisma generate` |
+| Getting `Cannot find module './generated/prisma'` | `npx prisma generate` |

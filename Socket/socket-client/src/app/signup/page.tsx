@@ -5,6 +5,7 @@ import { PersonPlus, EyeSlash, Eye } from "@gravity-ui/icons";
 import { Button, Checkbox, Link, Form, Input } from "@heroui/react";
 import { toast } from "react-toastify";
 import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 export default function SignupPage() {
   const router = useRouter()
@@ -17,20 +18,20 @@ export default function SignupPage() {
     const formData = new FormData(e.currentTarget);
     const userData = Object.fromEntries(formData.entries());
 
-    // const { data, error } = await authClient.signUp.email({
-    //   name: userData.name as string,
-    //   email: userData.email as string,
-    //   password: userData.password as string,
-    // });
-    // if(data){
-    //   toast.success("SignUp successful 🎉")
-    //   console.log(data);
-    //   router.push("/")
-    // }
-    // if(error){
-    //   toast.error(error.message)
-    //   console.log(error);
-    // }
+    const { data, error } = await authClient.signUp.email({
+      name: userData.name as string,
+      email: userData.email as string,
+      password: userData.password as string,
+    });
+    if(data){
+      // toast.success("SignUp successful 🎉")
+      console.log(data);
+      router.push("/")
+    }
+    if(error){
+      // toast.error(error.message)
+      console.log(error);
+    }
   };
 
   return (

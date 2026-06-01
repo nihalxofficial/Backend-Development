@@ -4,7 +4,7 @@
 
 ---
 
-## 🧠 Why Each Piece Exists
+## Why Each Piece Exists
 
 | Tool | Why You Need It |
 |---|---|
@@ -18,7 +18,7 @@
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 my-app/
@@ -39,7 +39,7 @@ my-app/
 
 ---
 
-## 🚀 Step-by-Step Setup
+## Step-by-Step Setup
 
 ### 1. Create & Initialize Project
 
@@ -60,7 +60,7 @@ npm install express @prisma/client @prisma/adapter-pg pg dotenv
 npm install -D typescript ts-node nodemon prisma @types/express @types/node @types/pg
 ```
 
-> ⚠️ **Prisma 7 requires `@prisma/adapter-pg` and `pg`** — without it, `new PrismaClient()` will throw an error.
+> **Prisma 7 requires `@prisma/adapter-pg` and `pg`** — without it, `new PrismaClient()` will throw an error.
 
 ---
 
@@ -87,7 +87,7 @@ Replace `tsconfig.json` content with:
 }
 ```
 
-> ⚠️ `"include": ["src/**/*"]` is required — without it TypeScript picks up `prisma.config.ts` from the root and throws a `rootDir` error.
+> `"include": ["src/**/*"]` is required — without it TypeScript picks up `prisma.config.ts` from the root and throws a `rootDir` error.
 
 ---
 
@@ -115,7 +115,7 @@ PORT=3000
 DATABASE_URL="postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/mydb?sslmode=require"
 ```
 
-> ✅ `sslmode=require` is mandatory for Neon connections.
+> `sslmode=require` is mandatory for Neon connections.
 
 ---
 
@@ -166,7 +166,7 @@ export default defineConfig({
 
 ### 10. Update `prisma/schema.prisma`
 
-> In Prisma 7, `url` is **removed** from schema — it lives in `prisma.config.ts` instead.
+> In Prisma 7, `url` is removed from schema — it lives in `prisma.config.ts` instead.
 
 ```prisma
 generator client {
@@ -193,11 +193,37 @@ model User {
 npx prisma migrate dev --name init
 ```
 
-> Creates the table in your Neon database. You can verify it in **Neon Dashboard → Tables**.
+> This creates the table in your Neon database AND automatically runs `prisma generate` for you.
+> You can verify the table was created in **Neon Dashboard → Tables**.
 
 ---
 
-### 12. Create `src/prisma.ts`
+### 12. Generate Prisma Client
+
+```bash
+npx prisma generate
+```
+
+> **This is the step that creates `src/generated/prisma/`** — the folder your `prisma.ts` imports from.
+> `migrate dev` runs this automatically, but you must run it manually whenever you:
+> - Change anything in `schema.prisma`
+> - Clone the project fresh on a new machine (the generated folder is not committed to Git)
+> - See the error `Cannot find module './generated/prisma'`
+
+After running it, you should see the folder:
+
+```
+src/
+└── generated/
+    └── prisma/        ← created by `prisma generate`
+        ├── index.d.ts
+        ├── index.js
+        └── ...
+```
+
+---
+
+### 13. Create `src/prisma.ts`
 
 > In Prisma 7, you **must** pass a driver adapter — `new PrismaClient()` alone will crash.
 
@@ -217,7 +243,7 @@ export default prisma;
 
 ---
 
-### 13. Create `src/index.ts`
+### 14. Create `src/index.ts`
 
 ```ts
 import dotenv from 'dotenv';
@@ -253,7 +279,7 @@ app.listen(PORT, () => {
 
 ---
 
-### 14. Add Scripts to `package.json`
+### 15. Add Scripts to `package.json`
 
 ```json
 "scripts": {
@@ -265,7 +291,7 @@ app.listen(PORT, () => {
 
 ---
 
-### 15. Run the App
+### 16. Run the App
 
 ```bash
 npm run dev
@@ -273,7 +299,7 @@ npm run dev
 
 ---
 
-## 🧪 Test the API
+## Test the API
 
 **Create a user:**
 ```bash
@@ -289,7 +315,7 @@ curl http://localhost:3000/users
 
 ---
 
-## ⚠️ Prisma 7 Key Changes (vs Prisma 6)
+## Prisma 7 Key Changes (vs Prisma 6)
 
 | | Prisma 6 | Prisma 7 |
 |---|---|---|
@@ -301,12 +327,23 @@ curl http://localhost:3000/users
 
 ---
 
-## ✅ Quick Command Reference
+## Quick Command Reference
 
 ```bash
 npx prisma init                    # Initialize Prisma
-npx prisma migrate dev --name init # Create & run migration
+npx prisma migrate dev --name init # Create & run migration (also runs generate)
 npx prisma generate                # Regenerate client after schema changes
 npx prisma studio                  # Open visual DB browser
 npm run dev                        # Start dev server
 ```
+
+---
+
+## When to Run `prisma generate`
+
+| Situation | Run generate? |
+|---|---|
+| After `prisma migrate dev` | No — migrate runs it automatically |
+| After editing `schema.prisma` without migrating | Yes |
+| After cloning the project on a new machine | Yes — generated folder is in `.gitignore` |
+| Getting `Cannot find module './generated/prisma'` | Yes — this is always the fix |

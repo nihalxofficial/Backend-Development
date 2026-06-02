@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { PersonPlus, EyeSlash, Eye } from "@gravity-ui/icons";
 import { Button, Form, Input } from "@heroui/react";
 import { toast } from "react-toastify";
@@ -8,8 +8,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import Link from "next/link";
 
-export default function SignupPage() {
-  const router = useRouter()
+function SignupPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const [isVisible, setIsVisible] = useState(false);
@@ -26,21 +26,19 @@ export default function SignupPage() {
       email: userData.email as string,
       password: userData.password as string,
     });
-    if(data){
-      toast.success("SignUp successful 🎉")
-      router.push(callbackUrl)
+    if (data) {
+      toast.success("SignUp successful 🎉");
+      router.push(callbackUrl);
     }
-    if(error){
-      toast.error(error.message)
+    if (error) {
+      toast.error(error.message);
     }
   };
 
   return (
     <div className="dark min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-50 p-4 transition-colors duration-300">
       <div className="w-full max-w-sm">
-        {/* Card container */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden">
-          {/* Header section */}
           <div className="px-6 pt-6 pb-4 border-b border-zinc-800/60 text-center">
             <div className="flex items-center gap-2 justify-center mb-2">
               <div className="p-1.5 bg-blue-500/10 rounded-full">
@@ -55,26 +53,11 @@ export default function SignupPage() {
             </p>
           </div>
 
-          {/* Form section */}
           <div className="px-6 py-5">
             <Form onSubmit={onSubmit} className="w-full flex flex-col gap-3">
-              {/* Full Name */}
-              <Input
-                name="name"
-                type="text"
-                placeholder="Full Name"
-                className="w-full"
-              />
+              <Input name="name" type="text" placeholder="Full Name" className="w-full" />
+              <Input name="email" type="email" placeholder="Email" className="w-full" />
 
-              {/* Email */}
-              <Input
-                name="email"
-                type="email"
-                placeholder="Email"
-                className="w-full"
-              />
-
-              {/* Password with visibility toggle */}
               <div className="relative w-full">
                 <Input
                   name="password"
@@ -96,7 +79,6 @@ export default function SignupPage() {
                 </button>
               </div>
 
-              {/* Form Action Section */}
               <div className="flex flex-col gap-2 mt-2">
                 <Button
                   type="submit"
@@ -122,5 +104,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Person, EyeSlash, Eye } from "@gravity-ui/icons";
 import { Button, Checkbox, Form, Input } from "@heroui/react";
 import { toast } from "react-toastify";
@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -17,31 +17,28 @@ export default function LoginPage() {
   const toggleVisibility = () => setIsVisible(!isVisible);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const formData = new FormData(e.currentTarget);
-      const userData = Object.fromEntries(formData.entries());
-  
-      const { data, error } = await authClient.signIn.email({
-        email: userData.email as string,
-        password: userData.password as string,
-        // callbackURL: callbackUrl
-      });
-      if(data){
-        toast.success("Login successful 🎉")
-        router.push(callbackUrl)
-      }
-      if(error){
-        toast.error(error.message)
-      }
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const userData = Object.fromEntries(formData.entries());
+
+    const { data, error } = await authClient.signIn.email({
+      email: userData.email as string,
+      password: userData.password as string,
+    });
+    if (data) {
+      toast.success("Login successful 🎉");
+      router.push(callbackUrl);
     }
+    if (error) {
+      toast.error(error.message);
+    }
+  };
 
   return (
     <div className="dark min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-50 p-4 transition-colors duration-300">
       <div className="w-full max-w-sm">
-        {/* Card container */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden">
           
-          {/* Header section */}
           <div className="px-6 pt-6 pb-4 border-b border-zinc-800/60 text-center">
             <div className="flex items-center gap-2 justify-center mb-2">
               <div className="p-1.5 bg-blue-500/10 rounded-full">
@@ -54,11 +51,9 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Form section */}
           <div className="px-6 py-5">
             <Form onSubmit={onSubmit} className="w-full flex flex-col gap-3">
               
-              {/* Email */}
               <Input
                 name="email"
                 type="email"
@@ -66,7 +61,6 @@ export default function LoginPage() {
                 className="w-full"
               />
 
-              {/* Password with visibility toggle */}
               <div className="relative w-full">
                 <Input
                   name="password"
@@ -88,9 +82,8 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              {/* Remember me and Forgot password */}
               <div className="flex items-center justify-between mt-1">
-                <Checkbox name="remember" >
+                <Checkbox name="remember">
                   <span className="text-xs text-zinc-400 select-none ml-1">
                     Remember me
                   </span>
@@ -100,20 +93,22 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              {/* Form Action Section */}
               <div className="flex flex-col gap-2 mt-2">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold h-10 rounded-lg flex items-center justify-center gap-2 transition-all duration-200 text-sm"
                   size="sm"
                 >
                   <Person className="h-4 w-4" />
                   Sign In
                 </Button>
-                
+
                 <div className="text-center text-xs text-zinc-400">
                   Don&apos;t have an account?{" "}
-                  <Link href={`/signup?callbackUrl=${callbackUrl}`} className="text-xs text-blue-400 font-medium hover:underline">
+                  <Link
+                    href={`/signup?callbackUrl=${callbackUrl}`}
+                    className="text-xs text-blue-400 font-medium hover:underline"
+                  >
                     Sign up
                   </Link>
                 </div>
@@ -123,5 +118,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

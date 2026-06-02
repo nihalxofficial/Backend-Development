@@ -25,12 +25,10 @@ export default function SignupPage() {
     });
     if(data){
       toast.success("SignUp successful 🎉")
-      console.log(data);
       router.push("/")
     }
     if(error){
       toast.error(error.message)
-      console.log(error);
     }
   };
 

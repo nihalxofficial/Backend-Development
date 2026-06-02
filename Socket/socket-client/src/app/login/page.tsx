@@ -24,12 +24,10 @@ export default function LoginPage() {
       });
       if(data){
         toast.success("Login successful 🎉")
-        console.log(data);
         router.push("/")
       }
       if(error){
         toast.error(error.message)
-        console.log(error);
       }
     }
 

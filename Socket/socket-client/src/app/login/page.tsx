@@ -66,31 +66,31 @@ export default function LoginPage() {
                 className="w-full"
               />
 
-              {/* Password */}
-              <Input
-                name="password"
-                placeholder="Password"
-                type={isVisible ? "text" : "password"}
-                className="w-full"
-                endContent={
-                  <button
-                    className="focus:outline-none"
-                    type="button"
-                    onClick={toggleVisibility}
-                    aria-label="toggle password visibility"
-                  >
-                    {isVisible ? (
-                      <EyeSlash className="h-4 w-4 text-zinc-400 hover:text-zinc-200" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-zinc-400 hover:text-zinc-200" />
-                    )}
-                  </button>
-                }
-              />
+              {/* Password with visibility toggle */}
+              <div className="relative w-full">
+                <Input
+                  name="password"
+                  placeholder="Password"
+                  type={isVisible ? "text" : "password"}
+                  className="w-full"
+                />
+                <button
+                  type="button"
+                  onClick={toggleVisibility}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 focus:outline-none"
+                  aria-label="toggle password visibility"
+                >
+                  {isVisible ? (
+                    <EyeSlash className="h-4 w-4 text-zinc-400 cursor-pointer hover:text-zinc-200" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-zinc-400 cursor-pointer hover:text-zinc-200" />
+                  )}
+                </button>
+              </div>
 
               {/* Remember me and Forgot password */}
               <div className="flex items-center justify-between mt-1">
-                <Checkbox name="remember" size="sm" radius="sm" color="primary">
+                <Checkbox name="remember" >
                   <span className="text-xs text-zinc-400 select-none ml-1">
                     Remember me
                   </span>

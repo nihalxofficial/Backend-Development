@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PersonPlus, EyeSlash, Eye } from "@gravity-ui/icons";
-import { Button, Checkbox, Form, Input } from "@heroui/react";
+import { Button, Form, Input } from "@heroui/react";
 import { toast } from "react-toastify";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -74,27 +74,27 @@ export default function SignupPage() {
                 className="w-full"
               />
 
-              {/* Password */}
-              <Input
-                name="password"
-                placeholder="Password"
-                type={isVisible ? "text" : "password"}
-                className="w-full"
-                endContent={
-                  <button
-                    className="focus:outline-none"
-                    type="button"
-                    onClick={toggleVisibility}
-                    aria-label="toggle password visibility"
-                  >
-                    {isVisible ? (
-                      <EyeSlash className="h-4 w-4 text-zinc-400 hover:text-zinc-200" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-zinc-400 hover:text-zinc-200" />
-                    )}
-                  </button>
-                }
-              />
+              {/* Password with visibility toggle */}
+              <div className="relative w-full">
+                <Input
+                  name="password"
+                  placeholder="Password"
+                  type={isVisible ? "text" : "password"}
+                  className="w-full"
+                />
+                <button
+                  type="button"
+                  onClick={toggleVisibility}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 focus:outline-none"
+                  aria-label="toggle password visibility"
+                >
+                  {isVisible ? (
+                    <EyeSlash className="h-4 w-4 text-zinc-400 cursor-pointer hover:text-zinc-200" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-zinc-400 cursor-pointer hover:text-zinc-200" />
+                  )}
+                </button>
+              </div>
 
               {/* Form Action Section */}
               <div className="flex flex-col gap-2 mt-2">

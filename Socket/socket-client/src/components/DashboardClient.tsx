@@ -4,6 +4,12 @@ import { socket } from "@/lib/socket";
 import { Users, TrendingUp, Award, Calendar, Crown } from "lucide-react";
 import { useEffect, useState } from "react";
 
+// const Api = typeof window === "undefined"
+//   ? process.env.API_URL
+//   : process.env.NEXT_PUBLIC_API_URL
+
+const Api = process.env.NEXT_PUBLIC_API_URL
+
 type Stats = {
   totalStudents: number;
   avgCgpa: number;
@@ -24,11 +30,11 @@ const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers:
 
   useEffect(() => {
     socket.on("dashboard-updated", async () => {
-      const analytics = await fetch("http://localhost:5000/analytics").then(
+      const analytics = await fetch(`${Api}/analytics`).then(
         (r) => r.json(),
       );
 
-      const performers = await fetch("http://localhost:5000/top-students").then(
+      const performers = await fetch(`${Api}/top-students`).then(
         (r) => r.json(),
       );
 

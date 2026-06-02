@@ -488,7 +488,6 @@ export const redis = new Redis({
 ```typescript
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { upstashRedisAdapter } from '@better-auth/redis';
 import { redis } from './redis';
 import prisma from './prisma';
 
@@ -500,7 +499,22 @@ export const auth = betterAuth({
     // ─── Use Redis as the session store ───────────────────────
     // Sessions are saved in Redis instead of your main DB.
     // The DB adapter is still used for user/account data only.
-    secondaryStorage: upstashRedisAdapter(redis),
+    secondaryStorage: {
+    get: async (key) => {
+        const value = await redis.get(key);
+        return value ? JSON.stringify(value) : null;
+    },
+    set: async (key, value, ttl) => {
+        if (ttl) {
+            await redis.set(key, value, { ex: ttl });
+        } else {
+            await redis.set(key, value);
+        }
+    },
+    delete: async (key) => {
+        await redis.del(key);
+    },
+},
     // ──────────────────────────────────────────────────────────
 
     session: {

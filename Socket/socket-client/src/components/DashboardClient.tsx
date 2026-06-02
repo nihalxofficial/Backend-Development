@@ -15,7 +15,7 @@ type TopPerformers = {
   name: string;
   cgpa: number;
   age: number;
-  dept: string;
+  department: string;
 };
 
 const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers: TopPerformers[]}) => {
@@ -192,7 +192,7 @@ const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers:
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm text-zinc-400">
-                      {performer?.dept}
+                      {performer?.department}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

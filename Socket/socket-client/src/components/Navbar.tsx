@@ -3,8 +3,10 @@ import { authClient } from "@/lib/auth-client";
 import { Avatar, Button } from "@heroui/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-const Navbar = () => {
+// ✅ Inner component — calls useSearchParams
+const NavbarContent = () => {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const { data: session, isPending } = authClient.useSession();
@@ -28,40 +30,27 @@ const Navbar = () => {
         {/* Navigation Links */}
         <ul className="flex items-center gap-6">
           <li>
-            <Link
-              href="/"
-              className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors"
-            >
+            <Link href="/" className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors">
               Home
             </Link>
           </li>
           <li>
-            <Link
-              href="/students"
-              className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors"
-            >
+            <Link href="/students" className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors">
               Students
             </Link>
           </li>
           <li>
-            <Link
-              href="/add-student"
-              className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors"
-            >
+            <Link href="/add-student" className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors">
               Add Student
             </Link>
           </li>
           <li>
-            <Link
-              href="/dashboard"
-              className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors"
-            >
+            <Link href="/dashboard" className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors">
               Dashboard
             </Link>
           </li>
         </ul>
 
-        {/* Loading Skeleton */}
         {isPending && (
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-zinc-700 animate-pulse" />
@@ -72,22 +61,17 @@ const Navbar = () => {
           </div>
         )}
 
-        {/* Not Logged In */}
         {!isPending && !user && (
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="text-zinc-300">
               <Link href={`/login?callbackUrl=${callbackUrl}`}>Login</Link>
             </Button>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-500 text-white"
-            >
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white">
               <Link href={`/signup?callbackUrl=${callbackUrl}`}>Sign Up</Link>
             </Button>
           </div>
         )}
 
-        {/* Logged In */}
         {!isPending && user && (
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
@@ -99,9 +83,7 @@ const Navbar = () => {
                 <Avatar.Fallback>{user?.name?.charAt(0) || "U"}</Avatar.Fallback>
               </Avatar>
               <div className="hidden sm:block">
-                <h2 className="text-sm font-semibold text-zinc-100">
-                  Welcome Back
-                </h2>
+                <h2 className="text-sm font-semibold text-zinc-100">Welcome Back</h2>
                 <p className="text-xs text-zinc-400">{user?.name}</p>
               </div>
             </div>
@@ -117,6 +99,15 @@ const Navbar = () => {
         )}
       </div>
     </nav>
+  );
+};
+
+// ✅ Outer component — wraps inner in Suspense
+const Navbar = () => {
+  return (
+    <Suspense fallback={null}>
+      <NavbarContent />
+    </Suspense>
   );
 };
 

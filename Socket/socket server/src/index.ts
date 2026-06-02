@@ -5,6 +5,8 @@ import express, { Request, Response } from 'express';
 import prisma from './prisma';
 import cors from "cors";
 
+import { Redis } from '@upstash/redis';
+
 import { createServer } from "http";
 import { Server } from "socket.io";
 
@@ -15,10 +17,16 @@ const httpServer = createServer(app);
 
 const PORT = process.env.PORT || 5000;
 
+
+const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
+    origin: process.env.CLIENT_URL,
+    methods: ["GET", "POST","PATCH","PUT", "DELETE"]
   }
 });
 
@@ -59,18 +67,30 @@ app.post('/customers/startup', async (req: Request, res: Response) => {
 });
 
 app.get('/students', async (req: Request, res: Response) => {
+  const cached = await redis.get("students:all");
+    if (cached) {
+        res.send(cached);
+        return;
+    }
   const students = await prisma.student.findMany({
     orderBy: { age: "asc" },
   });
+  await redis.set("students:all", students, { ex: 60 });
   res.json(students);
 });
 
 app.get('/students/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const students = await prisma.student.findUnique({
+  const cached = await redis.get(`student:${id}`);
+    if (cached) {
+        res.send(cached);
+        return;
+    }
+  const student = await prisma.student.findUnique({
     where: { id: String(id) }
   });
-  res.json(students);
+  await redis.set(`student:${id}`, student, { ex: 60 });
+  res.json(student);
 });
 
 app.post('/students', async (req: Request, res: Response) => {
@@ -78,6 +98,10 @@ app.post('/students', async (req: Request, res: Response) => {
   const result = await prisma.student.create({
     data: student,
   });
+  await redis.del("students:all");
+  await redis.del("students:analytics");
+  await redis.del("students:top-students");
+
   io.emit("student-created", result);
   io.emit("dashboard-updated");
   res.json(result);
@@ -89,6 +113,10 @@ app.post('/students/startup', async (req: Request, res: Response) => {
   const result = await prisma.student.createMany({
     data: students,
   });
+  await redis.del("students:all");
+  await redis.del("students:analytics");
+  await redis.del("students:top-students");
+
   io.emit("students-created", result);
   io.emit("dashboard-updated");
   res.json(result);
@@ -102,6 +130,10 @@ app.patch('/students/:id', async (req: Request, res: Response) => {
     where: { id: String(id) },
     data: student,
   });
+  await redis.del("students:all");
+  await redis.del(`student:${id}`);
+  await redis.del("students:analytics");
+  await redis.del("students:top-students");
   io.emit("student-updated", result);
   io.emit("dashboard-updated");
   res.json(result);
@@ -112,6 +144,11 @@ app.delete('/students/:id', async (req: Request, res: Response) => {
   const result = await prisma.student.delete({
     where: { id: String(id) },
   });
+  await redis.del("students:all");
+  await redis.del(`student:${id}`);
+  await redis.del("students:analytics");
+  await redis.del("students:top-students");
+  
   io.emit("student-deleted", result.id);
   io.emit("dashboard-updated");
   res.json(result);
@@ -119,6 +156,12 @@ app.delete('/students/:id', async (req: Request, res: Response) => {
 
 
 app.get("/analytics", async (req: Request, res: Response) => {
+  const cached = await redis.get("students:analytics");
+
+    if (cached) {
+        res.send(cached);
+        return;
+    }
   const [result] = await prisma.$queryRaw<{
     totalStudents: number;
     avgCgpa: number;
@@ -132,11 +175,16 @@ app.get("/analytics", async (req: Request, res: Response) => {
     ROUND(AVG(age)::numeric, 1)::float AS "avgAge"
   FROM "Student";
 `
-  // io.emit("student-analytics-updated", result);
+  await redis.set("students:analytics", result, { ex: 60 });
   res.send(result);
 })
 
 app.get("/top-students", async (req: Request, res: Response) => {
+  const cached = await redis.get("students:top-students");
+    if (cached) {
+        res.send(cached);
+        return;
+    }
   const result = await prisma.$queryRaw<{
     name: string,
     department: string,
@@ -153,7 +201,7 @@ app.get("/top-students", async (req: Request, res: Response) => {
   where cgpa>=3.5
   order by cgpa desc;
   `
-  // io.emit("top-students-updated", result);
+  await redis.set("students:top-students", result, { ex: 60 });
   res.json(result);
 })
 

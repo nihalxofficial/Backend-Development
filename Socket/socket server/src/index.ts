@@ -13,11 +13,7 @@ app.use(express.json());
 app.use(cors());
 const httpServer = createServer(app);
 
-
-
 const PORT = process.env.PORT || 5000;
-
-
 
 const io = new Server(httpServer, {
   cors: {
@@ -83,6 +79,7 @@ app.post('/students', async (req: Request, res: Response) => {
     data: student,
   });
   io.emit("student-created", result);
+  io.emit("dashboard-updated");
   res.json(result);
 });
 
@@ -93,6 +90,7 @@ app.post('/students/startup', async (req: Request, res: Response) => {
     data: students,
   });
   io.emit("students-created", result);
+  io.emit("dashboard-updated");
   res.json(result);
 });
 
@@ -105,6 +103,7 @@ app.patch('/students/:id', async (req: Request, res: Response) => {
     data: student,
   });
   io.emit("student-updated", result);
+  io.emit("dashboard-updated");
   res.json(result);
 });
 
@@ -114,12 +113,13 @@ app.delete('/students/:id', async (req: Request, res: Response) => {
     where: { id: String(id) },
   });
   io.emit("student-deleted", result.id);
+  io.emit("dashboard-updated");
   res.json(result);
 });
 
 
 app.get("/analytics", async (req: Request, res: Response) => {
-  const result = await prisma.$queryRaw<{
+  const [result] = await prisma.$queryRaw<{
     totalStudents: number;
     avgCgpa: number;
     topCgpa: number;
@@ -132,6 +132,7 @@ app.get("/analytics", async (req: Request, res: Response) => {
     ROUND(AVG(age)::numeric, 1)::float AS "avgAge"
   FROM "Student";
 `
+  // io.emit("student-analytics-updated", result);
   res.send(result);
 })
 
@@ -152,6 +153,7 @@ app.get("/top-students", async (req: Request, res: Response) => {
   where cgpa>=3.5
   order by cgpa desc;
   `
+  // io.emit("top-students-updated", result);
   res.json(result);
 })
 

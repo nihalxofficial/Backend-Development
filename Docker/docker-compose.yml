@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  client:
+    build: ./(project-client-name)
+    image: (hubUserName)/(project-client-name):v1
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./(project-client-name)/.env.local
+    depends_on:
+      - server
+
+  server:
+    build: ./(project-server-name)
+    image: (hubUserName)/(project-server-name):v1
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./(project-server-name)/.env

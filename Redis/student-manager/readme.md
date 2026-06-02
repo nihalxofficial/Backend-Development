@@ -133,7 +133,7 @@ const redis = new Redis({
 
 
 app.get("/", (req, res) => {
-    res.json({ message: "Server is active ✔" });
+    res.json({ message: "aServer is active ✔" });
 });
 
 

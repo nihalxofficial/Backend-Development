@@ -5,11 +5,35 @@ import express, { Request, Response } from 'express';
 import prisma from './prisma';
 import cors from "cors";
 
+import { createServer } from "http";
+import { Server } from "socket.io";
+
 const app = express();
 app.use(express.json());
 app.use(cors());
+const httpServer = createServer(app);
+
+
 
 const PORT = process.env.PORT || 5000;
+
+
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
+
+
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
 
 
 app.get('/', async (req: Request, res: Response) => {
@@ -58,6 +82,7 @@ app.post('/students', async (req: Request, res: Response) => {
   const result = await prisma.student.create({
     data: student,
   });
+  io.emit("student-created", result);
   res.json(result);
 });
 
@@ -67,6 +92,7 @@ app.post('/students/startup', async (req: Request, res: Response) => {
   const result = await prisma.student.createMany({
     data: students,
   });
+  io.emit("students-created", result);
   res.json(result);
 });
 
@@ -78,6 +104,7 @@ app.patch('/students/:id', async (req: Request, res: Response) => {
     where: { id: String(id) },
     data: student,
   });
+  io.emit("student-updated", result);
   res.json(result);
 });
 
@@ -86,6 +113,7 @@ app.delete('/students/:id', async (req: Request, res: Response) => {
   const result = await prisma.student.delete({
     where: { id: String(id) },
   });
+  io.emit("student-deleted", result.id);
   res.json(result);
 });
 
@@ -129,6 +157,10 @@ app.get("/top-students", async (req: Request, res: Response) => {
 
 
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// app.listen(PORT, () => {
+//   console.log(`Server running on http://localhost:${PORT}`);
+// });
+
+httpServer.listen(PORT, () => {
+  console.log(`Socket Server running on ${PORT}`);
 });

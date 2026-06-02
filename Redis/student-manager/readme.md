@@ -441,7 +441,7 @@ With Redis:     Request → Redis session lookup → Response  (fast, in-memory)
 ### Install dependencies
 
 ```bash
-npm install better-auth @upstash/redis @better-auth/redis
+npm install better-auth @upstash/redis
 ```
 
 > `@better-auth/redis` is the official Better Auth adapter for Redis session storage.

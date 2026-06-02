@@ -704,6 +704,244 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ---
 ---
 
+# Example 4 — PostgreSQL + GORM + Fiber (Go, single file)
+
+GORM is Go's most popular ORM. Fiber is a fast Express-style web framework for Go. Everything lives in one `main.go` file — no separate packages needed.
+
+```
+Without Redis:  Request → PostgreSQL → Response         (slow)
+With Redis:     Request → Redis → Response               (fast)
+                Request → Redis miss → PostgreSQL → Redis → Response
+```
+
+---
+
+### Install dependencies
+
+```bash
+go get github.com/gofiber/fiber/v3
+go get github.com/gofiber/fiber/v3/middleware/cors
+go get gorm.io/gorm
+go get gorm.io/driver/postgres
+go get github.com/redis/go-redis/v9
+```
+
+---
+
+### `main.go`
+
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+type Student struct {
+	ID            uint64    `json:"id" gorm:"primaryKey"`
+	Name          string    `json:"name"`
+	Age           int       `json:"age"`
+	Cgpa          float32   `json:"cgpa"`
+	Department    string    `json:"department"`
+	AdmissionDate time.Time `json:"admission_date"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+func main() {
+	dsn := os.Getenv("DATABASE_URL")
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	fmt.Println("Connected to Postgres successfully ✔")
+	db.AutoMigrate(&Student{})
+
+	// ─── Redis Client Setup ────────────────────────────────────
+	// Upstash provides a rediss:// URL — go-redis handles TLS automatically.
+	ctx := context.Background()
+	opt, err := redis.ParseURL(os.Getenv("UPSTASH_REDIS_URL"))
+	if err != nil {
+		log.Fatal("Failed to parse Redis URL:", err)
+	}
+	rdb := redis.NewClient(opt)
+
+	// Ping to confirm the connection works
+	if _, err := rdb.Ping(ctx).Result(); err != nil {
+		log.Fatal("Failed to connect to Redis:", err)
+	}
+	fmt.Println("Connected to Redis successfully ✔")
+	// ──────────────────────────────────────────────────────────
+
+	app := fiber.New()
+	app.Use(cors.New())
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5000"
+	}
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Status(200).JSON(fiber.Map{"message": "Server is running"})
+	})
+
+
+	// ─── GET all students ──────────────────────────────────────
+	app.Get("/students", func(c fiber.Ctx) error {
+		cacheKey := "students:all"
+
+		// Check if students list is already saved in Redis
+		cached, err := rdb.Get(ctx, cacheKey).Result()
+
+		// If yes → decode JSON and return it, skip the database entirely
+		if err == nil {
+			var students []Student
+			json.Unmarshal([]byte(cached), &students)
+			return c.Status(200).JSON(students)
+		}
+
+		// If no → fetch from PostgreSQL via GORM
+		var students []Student
+		db.Find(&students)
+
+		// Encode to JSON and save in Redis for 60 seconds
+		data, _ := json.Marshal(students)
+		rdb.Set(ctx, cacheKey, data, 60*time.Second)
+
+		return c.Status(200).JSON(students)
+	})
+
+
+	// ─── GET single student by ID ──────────────────────────────
+	app.Get("/students/:sId", func(c fiber.Ctx) error {
+		sId := c.Params("sId")
+		cacheKey := fmt.Sprintf("student:%s", sId)
+
+		// Check cache using unique key per student e.g. "student:1"
+		cached, err := rdb.Get(ctx, cacheKey).Result()
+
+		// If found → decode and return it, no DB call needed
+		if err == nil {
+			var student Student
+			json.Unmarshal([]byte(cached), &student)
+			return c.Status(200).JSON(student)
+		}
+
+		// Not in cache → fetch from PostgreSQL via GORM
+		id, _ := strconv.Atoi(sId)
+		var student Student
+		if err := db.First(&student, id).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"message": "Student not found"})
+		}
+
+		// Encode and save this student in Redis for 60 seconds
+		data, _ := json.Marshal(student)
+		rdb.Set(ctx, cacheKey, data, 60*time.Second)
+
+		return c.Status(200).JSON(student)
+	})
+
+
+	// ─── POST create a student ─────────────────────────────────
+	app.Post("/students", func(c fiber.Ctx) error {
+		var student Student
+		c.Bind().Body(&student)
+		student.AdmissionDate = time.Now()
+		student.UpdatedAt = time.Now()
+
+		if err := db.Create(&student).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"message": err.Error()})
+		}
+
+		// New student added → old list cache is outdated → delete it
+		rdb.Del(ctx, "students:all")
+
+		return c.Status(201).JSON(student)
+	})
+
+
+	// ─── PATCH update a student ────────────────────────────────
+	app.Patch("/students/:sId", func(c fiber.Ctx) error {
+		sId := c.Params("sId")
+
+		var student Student
+		c.Bind().Body(&student)
+		id, _ := strconv.Atoi(sId)
+		db.Model(&Student{}).Where("id = ?", id).Updates(&student)
+
+		// Data changed → delete individual cache
+		rdb.Del(ctx, fmt.Sprintf("student:%s", sId))
+
+		// Also delete list cache since it includes this student
+		rdb.Del(ctx, "students:all")
+
+		return c.JSON(fiber.Map{"message": "Student updated!"})
+	})
+
+
+	// ─── DELETE a student ──────────────────────────────────────
+	app.Delete("/students/:sId", func(c fiber.Ctx) error {
+		sId := c.Params("sId")
+		id, _ := strconv.Atoi(sId)
+
+		var student Student
+		db.First(&student, id)
+		db.Delete(&student)
+
+		// Student gone → delete individual cache
+		rdb.Del(ctx, fmt.Sprintf("student:%s", sId))
+
+		// Also delete list cache since the list changed
+		rdb.Del(ctx, "students:all")
+
+		return c.JSON(fiber.Map{"message": "Student deleted"})
+	})
+
+
+	app.Listen(":" + port)
+}
+```
+
+---
+
+### `.env`
+
+```env
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+UPSTASH_REDIS_URL=rediss://default:your-token@your-url.upstash.io:6379
+PORT=5000
+```
+
+> **Note:** Upstash gives you a `rediss://` URL (double `s` = TLS). Paste it directly — `go-redis` handles the TLS handshake automatically when it sees `rediss://`.
+
+---
+
+### Key differences vs Node.js
+
+| Node.js (`@upstash/redis`) | Go (`go-redis`) |
+|---|---|
+| `redis.get("key")` | `rdb.Get(ctx, "key").Result()` |
+| `redis.set("key", val, { ex: 60 })` | `rdb.Set(ctx, "key", val, 60*time.Second)` |
+| `redis.del("key")` | `rdb.Del(ctx, "key")` |
+| Auto JSON serialization | Manual `json.Marshal` / `json.Unmarshal` |
+| HTTP-based (no connection needed) | TCP connection (persistent, managed by go-redis) |
+
+The caching **pattern** is identical — check cache → return or fetch → save → delete on mutations. Only the syntax differs.
+
+---
+---
+
 ## Quick Reference
 
 ### The 3 Redis methods used

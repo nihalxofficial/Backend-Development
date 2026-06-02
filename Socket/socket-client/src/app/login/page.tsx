@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { Person, EyeSlash, Eye } from "@gravity-ui/icons";
-import { Button, Checkbox, Link, Form, Input } from "@heroui/react";
+import { Button, Checkbox, Form, Input } from "@heroui/react";
 import { toast } from "react-toastify";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
   const [isVisible, setIsVisible] = useState(false);
 
   const toggleVisibility = () => setIsVisible(!isVisible);
@@ -21,10 +24,11 @@ export default function LoginPage() {
       const { data, error } = await authClient.signIn.email({
         email: userData.email as string,
         password: userData.password as string,
+        // callbackURL: callbackUrl
       });
       if(data){
         toast.success("Login successful 🎉")
-        router.push("/")
+        router.push(callbackUrl)
       }
       if(error){
         toast.error(error.message)
@@ -109,12 +113,11 @@ export default function LoginPage() {
                 
                 <div className="text-center text-xs text-zinc-400">
                   Don&apos;t have an account?{" "}
-                  <Link href="#" className="text-xs text-blue-400 font-medium hover:underline">
+                  <Link href={`/signup?callbackUrl=${callbackUrl}`} className="text-xs text-blue-400 font-medium hover:underline">
                     Sign up
                   </Link>
                 </div>
               </div>
-
             </Form>
           </div>
         </div>

@@ -2,9 +2,11 @@
 import { authClient } from "@/lib/auth-client";
 import { Avatar, Button } from "@heroui/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const Navbar = () => {
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
   const router = useRouter();
@@ -74,13 +76,13 @@ const Navbar = () => {
         {!isPending && !user && (
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="text-zinc-300">
-              <Link href="/login">Login</Link>
+              <Link href={`/login?callbackUrl=${callbackUrl}`}>Login</Link>
             </Button>
             <Button
               size="sm"
               className="bg-blue-600 hover:bg-blue-500 text-white"
             >
-              <Link href="/signup">Sign Up</Link>
+              <Link href={`/signup?callbackUrl=${callbackUrl}`}>Sign Up</Link>
             </Button>
           </div>
         )}

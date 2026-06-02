@@ -3,20 +3,22 @@ dotenv.config();
 
 import express, { Request, Response } from 'express';
 import prisma from './prisma';
+import cors from "cors";
 
 const app = express();
 app.use(express.json());
+app.use(cors());
 
 const PORT = process.env.PORT || 5000;
 
 
 app.get('/', async (req: Request, res: Response) => {
-  res.json({"message": "Server is active ✅"});
+  res.json({ "message": "Server is active ✅" });
 });
 
 app.get('/customers', async (req: Request, res: Response) => {
-    const customers = await prisma.customer.findMany();
-    res.json(customers);
+  const customers = await prisma.customer.findMany();
+  res.json(customers);
 });
 
 
@@ -37,18 +39,18 @@ app.post('/customers/startup', async (req: Request, res: Response) => {
 });
 
 app.get('/students', async (req: Request, res: Response) => {
-    const students = await prisma.student.findMany({
-      orderBy: {age: "asc"},
-    });
-    res.json(students);
+  const students = await prisma.student.findMany({
+    orderBy: { age: "asc" },
+  });
+  res.json(students);
 });
 
 app.get('/students/:id', async (req: Request, res: Response) => {
-    const {id} = req.params;
-    const students = await prisma.student.findUnique({
-      where: {id: String(id)}
-    });
-    res.json(students);
+  const { id } = req.params;
+  const students = await prisma.student.findUnique({
+    where: { id: String(id) }
+  });
+  res.json(students);
 });
 
 app.post('/students', async (req: Request, res: Response) => {
@@ -70,23 +72,60 @@ app.post('/students/startup', async (req: Request, res: Response) => {
 
 
 app.patch('/students/:id', async (req: Request, res: Response) => {
-  const {id} = req.params;
+  const { id } = req.params;
   const student = req.body;
   const result = await prisma.student.update({
-    where: {id: String(id)},
+    where: { id: String(id) },
     data: student,
   });
   res.json(result);
 });
 
 app.delete('/students/:id', async (req: Request, res: Response) => {
-  const {id} = req.params;
+  const { id } = req.params;
   const result = await prisma.student.delete({
-    where: {id: String(id)},
+    where: { id: String(id) },
   });
   res.json(result);
 });
 
+
+app.get("/analytics", async (req: Request, res: Response) => {
+  const result = await prisma.$queryRaw<{
+    totalStudents: number;
+    avgCgpa: number;
+    topCgpa: number;
+    avgAge: number;
+  }[]>`
+  SELECT
+    COUNT(id)::int AS "totalStudents",
+    ROUND(AVG(cgpa)::numeric, 2)::float AS "avgCgpa",
+    MAX(cgpa) AS "topCgpa",
+    ROUND(AVG(age)::numeric, 1)::float AS "avgAge"
+  FROM "Student";
+`
+  res.send(result);
+})
+
+app.get("/top-students", async (req: Request, res: Response) => {
+  const result = await prisma.$queryRaw<{
+    name: string,
+    department: string,
+    age: number,
+    cgpa: number
+  }[]>
+    `
+  select
+  name,
+  dept as department,
+  age::int,
+  cgpa::float
+  from "Student"
+  where cgpa>=3.5
+  order by cgpa desc;
+  `
+  res.json(result);
+})
 
 
 

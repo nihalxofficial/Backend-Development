@@ -1,5 +1,5 @@
 # Running Your Projects in Docker
-**Node.js · React · Next.js · TypeScript · Golang Fiber**
+**Node.js · React · Next.js · TypeScript · Golang Fiber · Prisma**
 
 ---
 
@@ -30,7 +30,7 @@ my-express-app/
 
 ### Dockerfile
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -39,7 +39,7 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 3000
+EXPOSE 5000
 
 CMD ["node", "src/index.js"]
 ```
@@ -50,10 +50,10 @@ CMD ["node", "src/index.js"]
 docker build -t my-express-app .
 
 # Run the container
-docker run -d -p 3000:3000 --name express-app my-express-app
+docker run -d -p 5000:5000 --name express-app my-express-app
 
 # Open in browser
-http://localhost:3000
+http://localhost:5000
 ```
 
 ---
@@ -72,7 +72,7 @@ my-ts-app/
 
 ### Dockerfile
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -83,7 +83,7 @@ COPY . .
 
 RUN npm run build
 
-EXPOSE 3000
+EXPOSE 5000
 
 CMD ["node", "dist/index.js"]
 ```
@@ -94,10 +94,67 @@ CMD ["node", "dist/index.js"]
 docker build -t my-ts-app .
 
 # Run the container
-docker run -d -p 3000:3000 --name ts-app my-ts-app
+docker run -d -p 5000:5000 --name ts-app my-ts-app
 
 # Open in browser
-http://localhost:3000
+http://localhost:5000
+```
+
+---
+
+## PART 2b — Express + TypeScript + Prisma (Backend)
+
+### Project Structure
+```
+my-ts-prisma-app/
+├── src/
+│   └── index.ts
+├── prisma/
+│   └── schema.prisma
+├── package.json
+├── tsconfig.json
+└── Dockerfile
+```
+
+### Dockerfile
+```dockerfile
+FROM node:24-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+COPY . .
+
+RUN npm run build
+
+EXPOSE 5000
+
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+```
+
+> **Why this order?**
+> `prisma generate` must run before `npm run build` — it writes the Prisma client into
+> `node_modules/.prisma/client`. Skip it and the build crashes with:
+> `PrismaClient is unable to run in this environment`
+>
+> `prisma migrate deploy` runs at container startup to apply any pending migrations.
+> Never use `migrate dev` in Docker — it's interactive and can reset your data.
+
+### Commands to Build & Run
+```bash
+# Build the image
+docker build -t my-ts-prisma-app .
+
+# Run — DATABASE_URL must be in your .env
+docker run -d -p 5000:5000 --env-file .env --name ts-prisma-app my-ts-prisma-app
+
+# Open in browser
+http://localhost:5000
 ```
 
 ---
@@ -115,7 +172,7 @@ my-react-app/
 
 ### Dockerfile
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -124,7 +181,7 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 5173
+EXPOSE 5000
 
 CMD ["npm", "run", "dev", "--", "--host"]
 ```
@@ -135,10 +192,10 @@ CMD ["npm", "run", "dev", "--", "--host"]
 docker build -t my-react-app .
 
 # Run the container
-docker run -d -p 5173:5173 --name react-app my-react-app
+docker run -d -p 5000:5000 --name react-app my-react-app
 
 # Open in browser
-http://localhost:5173
+http://localhost:5000
 ```
 
 ---
@@ -157,7 +214,7 @@ my-nextjs-app/
 
 ### Dockerfile
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -168,7 +225,7 @@ COPY . .
 
 RUN npm run build
 
-EXPOSE 3000
+EXPOSE 5000
 
 CMD ["npm", "start"]
 ```
@@ -179,11 +236,71 @@ CMD ["npm", "start"]
 docker build -t my-nextjs-app .
 
 # Run the container
-docker run -d -p 3000:3000 --name nextjs-app my-nextjs-app
+docker run -d -p 5000:5000 --name nextjs-app my-nextjs-app
 
 # Open in browser
-http://localhost:3000
+http://localhost:5000
 ```
+
+---
+
+## PART 4b — Next.js + Prisma + Better Auth (Frontend)
+
+### Project Structure
+```
+my-nextjs-prisma-app/
+├── app/
+├── prisma/
+│   └── schema.prisma
+├── public/
+├── package.json
+├── next.config.js
+└── Dockerfile
+```
+
+### Dockerfile
+```dockerfile
+FROM node:24-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+COPY . .
+
+RUN npm run build
+
+EXPOSE 5000
+
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+```
+
+> **Why `prisma generate` before `npm run build`?**
+> Next.js imports Prisma in server components and API routes at build time.
+> If the client isn't generated first, `npm run build` itself fails — not just the runtime.
+>
+> Better Auth uses Prisma under the hood for sessions and users, so the same rule applies.
+> No extra steps needed — as long as your schema has the Better Auth tables and
+> `prisma generate` runs before build, it works.
+
+### Commands to Build & Run
+```bash
+# Build the image
+docker build -t my-nextjs-prisma-app .
+
+# Run — DATABASE_URL and BETTER_AUTH_SECRET must be in your .env
+docker run -d -p 5000:5000 --env-file .env --name nextjs-prisma my-nextjs-prisma-app
+
+# Open in browser
+http://localhost:5000
+```
+
+> ⚠️ Never hardcode `DATABASE_URL` or `BETTER_AUTH_SECRET` in the Dockerfile.
+> Always pass them at runtime with `--env-file .env`.
 
 ---
 
@@ -267,7 +384,7 @@ services:
     build: ./client
     container_name: frontend
     ports:
-      - "3000:3000"
+      - "5000:5000"
     depends_on:
       - server
     networks:
@@ -306,7 +423,7 @@ See your code changes instantly without rebuilding — mount your project folder
 ### For Node.js / Express / Next.js
 ```bash
 docker run -d \
-  -p 3000:3000 \
+  -p 5000:5000 \
   -v $(pwd):/app \
   -v /app/node_modules \
   --name my-app \
@@ -327,7 +444,7 @@ CMD ["air"]
 ### Pass env file to container
 ```bash
 docker run -d \
-  -p 3000:3000 \
+  -p 5000:5000 \
   --env-file .env \
   --name my-app \
   my-app-image
@@ -351,7 +468,7 @@ services:
 | Task | Command |
 |---|---|
 | Build image | `docker build -t appname .` |
-| Run container | `docker run -d -p 3000:3000 --name appname appname` |
+| Run container | `docker run -d -p 5000:5000 --name appname appname` |
 | Stop container | `docker stop appname` |
 | Restart container | `docker restart appname` |
 | See running apps | `docker ps` |
@@ -369,11 +486,16 @@ services:
 
 | Problem | Fix |
 |---|---|
-| Port already in use | Change port: `-p 3001:3000` |
+| Port already in use | Change port: `-p 5001:5000` |
 | Code changes not showing | Rebuild: `docker build -t appname .` |
 | Container keeps stopping | Check logs: `docker logs appname` |
 | Can't connect client to server | Use service name in URL: `http://server:8080` not `localhost` |
 | node_modules missing | Add `-v /app/node_modules` when mounting volume |
+| PrismaClient error at runtime | Add `RUN npx prisma generate` before `RUN npm run build` |
+| Build fails with Prisma import | `prisma generate` must run before `npm run build` |
+| DATABASE_URL not found | Pass at runtime: `docker run --env-file .env ...` |
+| Migrations not applied | Add `npx prisma migrate deploy` at the start of CMD |
+| schema.prisma not found | Copy the folder: `COPY prisma ./prisma/` |
 
 ---
 

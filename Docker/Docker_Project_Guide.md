@@ -372,28 +372,26 @@ my-project/
 ### docker-compose.yml
 
 ```yaml
-services:
-  server:
-    build: ./server
-    container_name: backend
-    ports:
-      - "8080:8080"
-    networks:
-      - mynetwork
+version: "3.9"
 
+services:
   client:
-    build: ./client
-    container_name: frontend
+    build: ./(project-client-name)
+    image: (hubUserName)/(project-client-name):v1
     ports:
-      - "5000:5000"
+      - "3000:3000"
+    env_file:
+      - ./(project-client-name)/.env.local
     depends_on:
       - server
-    networks:
-      - mynetwork
 
-networks:
-  mynetwork:
-    driver: bridge
+  server:
+    build: ./(project-server-name)
+    image: (hubUserName)/(project-server-name):v1
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./(project-server-name)/.env
 ```
 
 ### Commands

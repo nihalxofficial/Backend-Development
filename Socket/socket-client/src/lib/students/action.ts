@@ -1,12 +1,11 @@
-// const Api = typeof window === "undefined"
-//   ? process.env.API_URL
-//   : process.env.NEXT_PUBLIC_API_URL
-
 "use server"
+const Api = typeof window === "undefined"
+  ? process.env.API_URL
+  : process.env.NEXT_PUBLIC_API_URL
 
 import { revalidatePath } from "next/cache";
 
-const Api = process.env.NEXT_PUBLIC_API_URL
+// const Api = process.env.NEXT_PUBLIC_API_URL
 
 
 type Student = {

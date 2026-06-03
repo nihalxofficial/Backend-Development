@@ -1,8 +1,8 @@
-// const Api = typeof window === "undefined"
-//   ? process.env.API_URL
-//   : process.env.NEXT_PUBLIC_API_URL
+const Api = typeof window === "undefined"
+  ? process.env.API_URL
+  : process.env.NEXT_PUBLIC_API_URL
 
-const Api = process.env.NEXT_PUBLIC_API_URL
+// const Api = process.env.NEXT_PUBLIC_API_URL
 
 
 export const getStudents = async()=> {

@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  client:
+    build: ./socket-client
+    image: nihalxofficial/socket-client:v1
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./socket-client/.env.local
+    depends_on:
+      - server
+
+  server:
+    build: ./socket server
+    image: nihalxofficial/socket-server:v1
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./socket server/.env

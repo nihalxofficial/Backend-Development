@@ -122,10 +122,9 @@ FROM node:24-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
-
 COPY prisma ./prisma/
-RUN npx prisma generate
+
+RUN npm install
 
 COPY . .
 
@@ -133,7 +132,7 @@ RUN npm run build
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["node", "dist/index.js"]
 ```
 
 ### ⚠️ Critical: package.json build script

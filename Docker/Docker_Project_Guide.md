@@ -1,4 +1,5 @@
 # Running Your Projects in Docker
+
 **Node.js · React · Next.js · TypeScript · Golang Fiber · Prisma**
 
 ---
@@ -20,15 +21,17 @@ Your Project Folder
 ## PART 1 — Node.js / Express (Backend)
 
 ### Project Structure
+
 ```
 my-express-app/
 ├── src/
 │   └── index.js
 ├── package.json
-└── Dockerfile        ← you create this
+└── Dockerfile
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -45,15 +48,11 @@ CMD ["node", "src/index.js"]
 ```
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-express-app .
-
-# Run the container
 docker run -d -p 5000:5000 --name express-app my-express-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
 
 ---
@@ -61,6 +60,7 @@ http://localhost:5000
 ## PART 2 — Node.js / Express with TypeScript
 
 ### Project Structure
+
 ```
 my-ts-app/
 ├── src/
@@ -71,6 +71,7 @@ my-ts-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -89,15 +90,11 @@ CMD ["node", "dist/index.js"]
 ```
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-ts-app .
-
-# Run the container
 docker run -d -p 5000:5000 --name ts-app my-ts-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
 
 ---
@@ -105,6 +102,7 @@ http://localhost:5000
 ## PART 2b — Express + TypeScript + Prisma (Backend)
 
 ### Project Structure
+
 ```
 my-ts-prisma-app/
 ├── src/
@@ -117,6 +115,7 @@ my-ts-prisma-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -137,31 +136,53 @@ EXPOSE 5000
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
 ```
 
-> **Why this order?**
-> `prisma generate` must run before `npm run build` — it writes the Prisma client into
-> `node_modules/.prisma/client`. Skip it and the build crashes with:
-> `PrismaClient is unable to run in this environment`
->
-> `prisma migrate deploy` runs at container startup to apply any pending migrations.
-> Never use `migrate dev` in Docker — it's interactive and can reset your data.
+### ⚠️ Critical: package.json build script
+
+Your `build` script must only run `tsc` — **not** `prisma generate`.
+
+```json
+// ✅ Correct
+"scripts": {
+  "build": "tsc"
+}
+
+// ❌ Wrong — crashes the Docker build (DATABASE_URL not available at build time)
+"scripts": {
+  "build": "prisma generate && tsc"
+}
+```
+
+The Dockerfile already handles `prisma generate` as a separate step before `npm run build`. Running it again inside the build script fails because `DATABASE_URL` is not available during image builds.
+
+### Why this order?
+
+| Step | Why |
+|------|-----|
+| `RUN npm install` | Installs all dependencies including Prisma CLI |
+| `RUN npx prisma generate` | Writes Prisma client into `node_modules/.prisma/client` — no `DATABASE_URL` needed |
+| `RUN npm run build` (tsc only) | Compiles TypeScript → `dist/`. Prisma client already exists so imports resolve |
+| `npx prisma migrate deploy` (CMD) | Applies pending migrations at container startup when `DATABASE_URL` is available |
+
+> Never use `prisma migrate dev` in Docker — it's interactive and can reset your data.
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-ts-prisma-app .
 
-# Run — DATABASE_URL must be in your .env
+# DATABASE_URL must be in your .env
 docker run -d -p 5000:5000 --env-file .env --name ts-prisma-app my-ts-prisma-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
+
+> ⚠️ Never hardcode `DATABASE_URL` in the Dockerfile. Always pass it at runtime with `--env-file .env`.
 
 ---
 
 ## PART 3 — React (Frontend)
 
 ### Project Structure
+
 ```
 my-react-app/
 ├── src/
@@ -171,6 +192,7 @@ my-react-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -187,15 +209,11 @@ CMD ["npm", "run", "dev", "--", "--host"]
 ```
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-react-app .
-
-# Run the container
 docker run -d -p 5000:5000 --name react-app my-react-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
 
 ---
@@ -203,6 +221,7 @@ http://localhost:5000
 ## PART 4 — Next.js
 
 ### Project Structure
+
 ```
 my-nextjs-app/
 ├── app/
@@ -213,6 +232,7 @@ my-nextjs-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -231,15 +251,11 @@ CMD ["npm", "start"]
 ```
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-nextjs-app .
-
-# Run the container
 docker run -d -p 5000:5000 --name nextjs-app my-nextjs-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
 
 ---
@@ -247,6 +263,7 @@ http://localhost:5000
 ## PART 4b — Next.js + Prisma + Better Auth (Frontend)
 
 ### Project Structure
+
 ```
 my-nextjs-prisma-app/
 ├── app/
@@ -259,6 +276,7 @@ my-nextjs-prisma-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM node:24-alpine
 
@@ -280,33 +298,24 @@ CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
 ```
 
 > **Why `prisma generate` before `npm run build`?**
-> Next.js imports Prisma in server components and API routes at build time.
-> If the client isn't generated first, `npm run build` itself fails — not just the runtime.
->
-> Better Auth uses Prisma under the hood for sessions and users, so the same rule applies.
-> No extra steps needed — as long as your schema has the Better Auth tables and
-> `prisma generate` runs before build, it works.
+> Next.js imports Prisma in server components and API routes at build time. If the client isn't generated first, `npm run build` itself fails. Better Auth uses Prisma under the hood for sessions and users, so the same rule applies.
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-nextjs-prisma-app .
 
-# Run — DATABASE_URL and BETTER_AUTH_SECRET must be in your .env
+# DATABASE_URL and BETTER_AUTH_SECRET must be in your .env
 docker run -d -p 5000:5000 --env-file .env --name nextjs-prisma my-nextjs-prisma-app
-
-# Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
-
-> ⚠️ Never hardcode `DATABASE_URL` or `BETTER_AUTH_SECRET` in the Dockerfile.
-> Always pass them at runtime with `--env-file .env`.
 
 ---
 
 ## PART 5 — Golang Fiber (Backend)
 
 ### Project Structure
+
 ```
 my-fiber-app/
 ├── main.go
@@ -316,6 +325,7 @@ my-fiber-app/
 ```
 
 ### Dockerfile
+
 ```dockerfile
 FROM golang:1.21-alpine AS builder
 
@@ -340,37 +350,33 @@ CMD ["./main"]
 ```
 
 ### Commands to Build & Run
+
 ```bash
-# Build the image
 docker build -t my-fiber-app .
-
-# Run the container
 docker run -d -p 8080:8080 --name fiber-app my-fiber-app
-
-# Open in browser
-http://localhost:8080
+# http://localhost:8080
 ```
 
 ---
 
 ## PART 6 — Client + Server Together (Docker Compose)
 
-Run your **Next.js frontend + Golang Fiber backend** together with one command.
+Run your Next.js frontend + Golang Fiber backend together with one command.
 
 ### Project Structure
+
 ```
 my-project/
 ├── client/          ← Next.js or React
 │   └── Dockerfile
 ├── server/          ← Golang Fiber or Express
 │   └── Dockerfile
-└── docker-compose.yml   ← you create this
+└── docker-compose.yml
 ```
 
 ### docker-compose.yml
-```yaml
-version: '3.8'
 
+```yaml
 services:
   server:
     build: ./server
@@ -395,32 +401,22 @@ networks:
     driver: bridge
 ```
 
-### Commands to Run Everything
+### Commands
+
 ```bash
-# Start both client and server together
-docker compose up -d
-
-# Stop everything
-docker compose down
-
-# Rebuild after code changes
-docker compose up -d --build
-
-# See logs of all services
-docker compose logs -f
-
-# See logs of one service only
-docker compose logs -f server
-docker compose logs -f client
+docker compose up -d          # start everything
+docker compose down           # stop everything
+docker compose up -d --build  # rebuild after code changes
+docker compose logs -f        # all logs
+docker compose logs -f server # logs for one service
 ```
 
 ---
 
 ## PART 7 — Live Code Reload (Dev Mode)
 
-See your code changes instantly without rebuilding — mount your project folder into the container.
+### Node.js / Express / Next.js
 
-### For Node.js / Express / Next.js
 ```bash
 docker run -d \
   -p 5000:5000 \
@@ -430,8 +426,8 @@ docker run -d \
   my-app-image
 ```
 
-### For Golang Fiber (using Air for live reload)
-Add this to your Dockerfile for dev:
+### Golang Fiber (using Air)
+
 ```dockerfile
 RUN go install github.com/cosmtrek/air@latest
 CMD ["air"]
@@ -441,16 +437,14 @@ CMD ["air"]
 
 ## PART 8 — Environment Variables (.env)
 
-### Pass env file to container
+### Single container
+
 ```bash
-docker run -d \
-  -p 5000:5000 \
-  --env-file .env \
-  --name my-app \
-  my-app-image
+docker run -d -p 5000:5000 --env-file .env --name my-app my-app-image
 ```
 
-### In docker-compose.yml
+### Docker Compose
+
 ```yaml
 services:
   server:
@@ -463,10 +457,10 @@ services:
 
 ---
 
-## PART 9 — Most Used Commands for Your Projects
+## PART 9 — Most Used Commands
 
 | Task | Command |
-|---|---|
+|------|---------|
 | Build image | `docker build -t appname .` |
 | Run container | `docker run -d -p 5000:5000 --name appname appname` |
 | Stop container | `docker stop appname` |
@@ -485,17 +479,18 @@ services:
 ## PART 10 — Common Mistakes & Fixes
 
 | Problem | Fix |
-|---|---|
+|---------|-----|
 | Port already in use | Change port: `-p 5001:5000` |
 | Code changes not showing | Rebuild: `docker build -t appname .` |
 | Container keeps stopping | Check logs: `docker logs appname` |
 | Can't connect client to server | Use service name in URL: `http://server:8080` not `localhost` |
-| node_modules missing | Add `-v /app/node_modules` when mounting volume |
+| `node_modules` missing | Add `-v /app/node_modules` when mounting volume |
 | PrismaClient error at runtime | Add `RUN npx prisma generate` before `RUN npm run build` |
 | Build fails with Prisma import | `prisma generate` must run before `npm run build` |
-| DATABASE_URL not found | Pass at runtime: `docker run --env-file .env ...` |
-| Migrations not applied | Add `npx prisma migrate deploy` at the start of CMD |
-| schema.prisma not found | Copy the folder: `COPY prisma ./prisma/` |
+| `DATABASE_URL` not found at build time | Remove `prisma generate` from build script. Set `"build": "tsc"` only. |
+| `DATABASE_URL` not found at runtime | Pass at runtime: `docker run --env-file .env ...` |
+| Migrations not applied | Add `npx prisma migrate deploy` at the start of `CMD` |
+| `schema.prisma` not found | Copy the folder: `COPY prisma ./prisma/` |
 
 ---
 

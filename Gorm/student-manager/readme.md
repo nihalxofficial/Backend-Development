@@ -15,7 +15,7 @@
 | **Neon** | Free cloud PostgreSQL database — no local DB setup needed |
 | **cors middleware** | Allows frontend apps on different origins to call your API |
 | **AutoMigrate** | GORM auto creates/updates DB tables from your struct — no SQL needed |
-| **WebSocket** | `gofiber/contrib/websocket` — real-time bidirectional communication |
+| **Socket.IO** | `zishang520/socket.io` — real-time named events, rooms, auto-reconnect |
 | **Redis** | In-memory store — caching, sessions, pub/sub, rate limiting |
 
 
@@ -25,7 +25,7 @@
 
 ```
 go-fiber-app/
-├── server.go        # Main file — routes, DB connection, models, WebSocket, Redis
+├── server.go        # Main file — routes, DB connection, models, Socket.IO, Redis
 ├── Dockerfile       # Docker image definition
 ├── .dockerignore    # Files to exclude from Docker build
 ├── go.mod           # Go module definition & dependencies
@@ -501,242 +501,345 @@ git push origin main
 
 ---
 
-## 🔌 WebSockets with Fiber
+## 🔌 Socket.IO with Go
 
-WebSockets let the server push data to clients in real time — no polling needed. Useful for live dashboards, chat, notifications, or streaming updates.
+Socket.IO enables real-time, event-based communication between server and client. It builds on WebSockets and adds named events, rooms, auto-reconnect, and HTTP long-polling fallback — so it works even behind corporate proxies that block raw WebSockets.
+
+> **Why Socket.IO over raw WebSockets in Go?**
+> If your frontend already uses `socket.io-client` (React, Vue, plain JS), the backend must also speak the Socket.IO protocol. A plain WebSocket server won't work with a Socket.IO client.
 
 ---
 
-### 1. Install the WebSocket Middleware
+### 1. Install
 
 ```bash
-go get github.com/gofiber/contrib/websocket
+go get github.com/zishang520/socket.io/v2
 ```
-
-> This is a separate package from Fiber core — it's in the `contrib` org.
 
 ---
 
 ### 2. How It Works
 
 ```
-Client                        Server
-  |                              |
-  |-- HTTP GET /ws ------------> |  (Upgrade request)
-  |<-- 101 Switching Protocols - |  (Handshake)
-  |                              |
-  |<===== WebSocket Frame ======>|  (Full-duplex, persistent)
-  |<===== WebSocket Frame ======>|
-  |                              |
+Browser (socket.io-client)         Go Server (zishang520/socket.io)
+  |                                         |
+  |-- HTTP handshake (polling) -----------> |
+  |<-- upgrade to WebSocket --------------- |
+  |                                         |
+  |-- emit("student:create", data) -------> |  named event
+  |<-- emit("student:created", student) --- |  named event back
+  |                                         |
+  |  (connection stays open, full-duplex)   |
 ```
-
-HTTP is used only for the handshake. After that, the connection stays open and both sides can send at any time.
 
 ---
 
-### 3. Add WebSocket to `server.go`
+### 3. Add Socket.IO to `server.go`
+
+Replace the `app.Listen` call with an `http.Server` so Socket.IO and Fiber share the same port:
 
 ```go
+package main
+
 import (
-    "github.com/gofiber/contrib/websocket"
-    // ... existing imports
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "strconv"
+    "time"
+
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/cors"
+    sio "github.com/zishang520/socket.io/v2/socket"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
 )
 
-// WebSocket upgrade check middleware — must come before the handler
-app.Use("/ws", func(c fiber.Ctx) error {
-    if websocket.IsWebSocketUpgrade(c) {
-        return c.Next()
+type Student struct {
+    ID            uint64    `json:"id"             gorm:"primaryKey"`
+    Name          string    `json:"name"`
+    Age           int       `json:"age"`
+    Cgpa          float32   `json:"cgpa"`
+    Department    string    `json:"department"`
+    AdmissionDate time.Time `json:"admission_date"`
+    UpdatedAt     time.Time `json:"updated_at"`
+}
+
+func main() {
+    dsn := os.Getenv("DATABASE_URL")
+    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    if err != nil {
+        log.Fatal("Failed to connect to database:", err)
     }
-    return fiber.ErrUpgradeRequired
+    fmt.Println("Connected to Neon Postgres successfully ✔")
+    db.AutoMigrate(&Student{})
+
+    // --- Socket.IO server ---
+    io := sio.NewServer(nil, nil)
+
+    io.On("connection", func(clients ...any) {
+        socket := clients[0].(*sio.Socket)
+        fmt.Println("Socket.IO client connected:", socket.Id())
+
+        socket.On("disconnect", func(...any) {
+            fmt.Println("Socket.IO client disconnected:", socket.Id())
+        })
+    })
+
+    // --- Fiber app ---
+    app := fiber.New()
+    app.Use(cors.New())
+
+    // Health check
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.Status(200).JSON(fiber.Map{"message": "Server is running"})
+    })
+
+    // GET all students
+    app.Get("/students", func(c fiber.Ctx) error {
+        var students []Student
+        db.Find(&students)
+        return c.Status(200).JSON(&students)
+    })
+
+    // GET student by ID
+    app.Get("/students/:sId", func(c fiber.Ctx) error {
+        sId, err := strconv.Atoi(c.Params("sId"))
+        if err != nil {
+            return c.Status(400).JSON(fiber.Map{"message": "Invalid student ID"})
+        }
+        var student Student
+        if err := db.First(&student, sId).Error; err != nil {
+            return c.Status(500).JSON(fiber.Map{"message": err.Error()})
+        }
+        return c.Status(200).JSON(student)
+    })
+
+    // POST create student — emit event after creation
+    app.Post("/students", func(c fiber.Ctx) error {
+        var student Student
+        c.Bind().Body(&student)
+        student.AdmissionDate = time.Now()
+        student.UpdatedAt = time.Now()
+        if err := db.Create(&student).Error; err != nil {
+            return c.Status(500).JSON(fiber.Map{"message": err.Error()})
+        }
+        // Notify all connected Socket.IO clients
+        io.Emit("student:created", student)
+        return c.Status(201).JSON(&student)
+    })
+
+    // PATCH update student — emit event after update
+    app.Patch("/students/:sId", func(c fiber.Ctx) error {
+        sId, _ := strconv.Atoi(c.Params("sId"))
+        var student Student
+        c.Bind().Body(&student)
+        db.Model(&Student{}).Where("id = ?", sId).Updates(&student)
+        io.Emit("student:updated", fiber.Map{"id": sId})
+        return c.JSON(fiber.Map{"message": "Student data updated!"})
+    })
+
+    // DELETE student — emit event after delete
+    app.Delete("/students/:sId", func(c fiber.Ctx) error {
+        sId, _ := strconv.Atoi(c.Params("sId"))
+        var student Student
+        db.First(&student, sId)
+        db.Delete(&student)
+        io.Emit("student:deleted", fiber.Map{"id": sId})
+        return c.JSON(fiber.Map{"message": "Student Deleted"})
+    })
+
+    // Mount both Fiber and Socket.IO on the same HTTP server
+    mux := http.NewServeMux()
+    mux.Handle("/socket.io/", io.ServeHandler(nil))
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        app.Handler()(w, r)
+    })
+
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "5000"
+    }
+    fmt.Println("Server running on http://localhost:" + port)
+    log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+```
+
+---
+
+### 4. Socket.IO Events for Students
+
+Every REST action also fires a Socket.IO event so connected clients update in real time:
+
+| REST Action | Socket.IO Event Emitted | Payload |
+|---|---|---|
+| `POST /students` | `student:created` | full student object |
+| `PATCH /students/:id` | `student:updated` | `{ id }` |
+| `DELETE /students/:id` | `student:deleted` | `{ id }` |
+
+---
+
+### 5. Frontend — Listen for Events
+
+Install the client:
+
+```bash
+npm install socket.io-client
+```
+
+Connect and listen:
+
+```javascript
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:5000");
+
+// Listen for student events pushed by the server
+socket.on("student:created", (student) => {
+    console.log("New student added:", student);
+    // e.g. append to your table/list
+});
+
+socket.on("student:updated", ({ id }) => {
+    console.log("Student updated, id:", id);
+    // e.g. re-fetch that row
+});
+
+socket.on("student:deleted", ({ id }) => {
+    console.log("Student deleted, id:", id);
+    // e.g. remove from list
+});
+```
+
+---
+
+### 6. Rooms — Notify Only a Department
+
+Group clients by department so only relevant users receive updates:
+
+```go
+io.On("connection", func(clients ...any) {
+    socket := clients[0].(*sio.Socket)
+
+    // Client tells server which department they belong to
+    socket.On("join:department", func(args ...any) {
+        dept := fmt.Sprint(args[0])          // e.g. "Computer Science"
+        socket.Join(sio.Room("dept:" + dept))
+        fmt.Printf("Socket %s joined room dept:%s\n", socket.Id(), dept)
+    })
 })
 
-// WebSocket handler
-app.Get("/ws", websocket.New(func(c *websocket.Conn) {
-    fmt.Println("Client connected:", c.RemoteAddr())
-
-    for {
-        // Read message from client
-        msgType, msg, err := c.ReadMessage()
-        if err != nil {
-            fmt.Println("Client disconnected:", err)
-            break
-        }
-        fmt.Printf("Received: %s\n", msg)
-
-        // Echo message back to client
-        if err := c.WriteMessage(msgType, msg); err != nil {
-            fmt.Println("Write error:", err)
-            break
-        }
-    }
-}))
-```
-
----
-
-### 4. Broadcast to All Connected Clients
-
-Track all active connections in a map and write to each one:
-
-```go
-import "sync"
-
-// Global connection hub
-var (
-    clients   = make(map[*websocket.Conn]bool)
-    clientsMu sync.Mutex
-)
-
-func broadcast(message []byte) {
-    clientsMu.Lock()
-    defer clientsMu.Unlock()
-    for conn := range clients {
-        if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
-            conn.Close()
-            delete(clients, conn)
-        }
-    }
-}
-
-// In the WebSocket handler:
-app.Get("/ws", websocket.New(func(c *websocket.Conn) {
-    clientsMu.Lock()
-    clients[c] = true
-    clientsMu.Unlock()
-
-    defer func() {
-        clientsMu.Lock()
-        delete(clients, c)
-        clientsMu.Unlock()
-        c.Close()
-    }()
-
-    for {
-        _, msg, err := c.ReadMessage()
-        if err != nil {
-            break
-        }
-        broadcast(msg) // Send to every connected client
-    }
-}))
-```
-
----
-
-### 5. Send JSON over WebSocket
-
-```go
-type WSMessage struct {
-    Event string      `json:"event"`
-    Data  interface{} `json:"data"`
-}
-
-// Send structured JSON to a client
-func sendJSON(conn *websocket.Conn, event string, data interface{}) error {
-    payload, err := json.Marshal(WSMessage{Event: event, Data: data})
-    if err != nil {
-        return err
-    }
-    return conn.WriteMessage(websocket.TextMessage, payload)
-}
-
-// Example — push a student update to all clients
+// In PATCH handler — notify only that department's room
 app.Patch("/students/:sId", func(c fiber.Ctx) error {
-    // ... update logic ...
-    broadcast([]byte(`{"event":"student_updated","data":{"id":` + c.Params("sId") + `}}`))
+    sId, _ := strconv.Atoi(c.Params("sId"))
+    var student Student
+    c.Bind().Body(&student)
+    db.Model(&Student{}).Where("id = ?", sId).Updates(&student)
+
+    // Fetch updated record to get department
+    db.First(&student, sId)
+    io.To(sio.Room("dept:" + student.Department)).Emit("student:updated", fiber.Map{"id": sId})
     return c.JSON(fiber.Map{"message": "Student data updated!"})
 })
 ```
 
----
-
-### 6. Test WebSocket with `wscat`
-
-```bash
-# Install wscat globally
-npm install -g wscat
-
-# Connect to the server
-wscat -c ws://localhost:5000/ws
-
-# Now type messages and press Enter — server will echo them back
-> Hello
-< Hello
-```
-
-Or test in the browser console:
+Frontend joins a room:
 
 ```javascript
-const ws = new WebSocket("ws://localhost:5000/ws");
-ws.onmessage = (e) => console.log("Message:", e.data);
-ws.send("Hello from browser!");
+socket.emit("join:department", "Computer Science");
+// Now only receives events for that department
 ```
 
 ---
 
-### WebSocket vs REST — When to Use Which
+### 7. Test with the Browser Console
+
+Open `http://localhost:5000` in a browser, open DevTools → Console:
+
+```javascript
+const socket = io("http://localhost:5000");
+socket.on("student:created", (data) => console.log("created:", data));
+socket.on("student:updated", (data) => console.log("updated:", data));
+socket.on("student:deleted", (data) => console.log("deleted:", data));
+```
+
+Then call the REST API (Postman or curl) and watch events fire live in the console.
+
+---
+
+### Socket.IO vs REST — When to Use Which
 
 | Use Case | Use |
 |---|---|
-| Fetch a list of students | REST `GET /students` |
-| Create / update / delete | REST `POST / PATCH / DELETE` |
-| Live notifications | WebSocket |
-| Real-time dashboard data | WebSocket |
-| Chat / collaborative editing | WebSocket |
-| File upload | REST |
+| Fetch list of students on page load | REST `GET /students` |
+| Create / update / delete a student | REST `POST / PATCH / DELETE` |
+| Push update to all open browser tabs | Socket.IO emit |
+| Notify only one department's users | Socket.IO room |
+| Auto-refresh a dashboard | Socket.IO |
 
 ---
 
-### WebSocket + Docker & Render Notes
+### Socket.IO + Docker & Render Notes
 
-WebSockets work out of the box with Docker — no extra config needed.
+Socket.IO works out of the box with Docker — no extra config.
 
-On **Render**, WebSocket connections are supported on all plans. Make sure your Fiber app listens on `0.0.0.0` (Fiber does this by default), and Render's reverse proxy will handle the upgrade automatically.
-
----
-
-## 🔴 Redis
-
-Redis is an in-memory data store — lightning fast for caching, session storage, rate limiting, and pub/sub messaging. It sits alongside Postgres: Postgres stores permanent data, Redis stores temporary/fast-access data.
+On **Render**, Socket.IO is fully supported. The HTTP long-polling fallback means it works even if the WebSocket upgrade is blocked. No special settings needed — Render's reverse proxy handles it automatically.
 
 ---
 
-### 1. Install Redis Client for Go
+## 🔴 Redis (Upstash)
+
+Redis is an in-memory data store — lightning fast for caching, rate limiting, and pub/sub messaging. This guide uses **[Upstash](https://upstash.com)** — a free serverless Redis that works both locally and in production with zero infrastructure to manage. No Docker Redis container needed.
+
+---
+
+### 1. Create an Upstash Database
+
+1. Go to **[upstash.com](https://upstash.com)** and sign up (free)
+2. Click **Create Database**
+3. Set:
+   - **Name** → `go-fiber-app`
+   - **Type** → `Regional`
+   - **Region** → closest to your Render deployment (e.g. `US-East-1`)
+4. Click **Create**
+5. Go to **Details** tab → copy the **Redis URL**:
+
+```
+rediss://default:your_password@your-host.upstash.io:6379
+```
+
+> `rediss://` (with double `s`) means TLS — always required by Upstash.
+
+---
+
+### 2. Add to Environment Variables
+
+**Local (`.env`):**
+```bash
+REDIS_URL=rediss://default:your_password@your-host.upstash.io:6379
+```
+
+**Render dashboard** → Environment Variables:
+
+| Key | Value |
+|---|---|
+| `REDIS_URL` | `rediss://default:xxx@your-host.upstash.io:6379` |
+
+---
+
+### 3. Install Go Redis Client
 
 ```bash
 go get github.com/redis/go-redis/v9
 ```
 
-> `go-redis` is the official, actively maintained Redis client for Go.
-
 ---
 
-### 2. Run Redis Locally (Docker)
+### 4. Connect to Upstash in `server.go`
 
-The easiest way to run Redis locally without installing anything:
-
-```bash
-docker run -d --name redis -p 6379:6379 redis:alpine
-```
-
-Verify it's running:
-
-```bash
-docker exec -it redis redis-cli ping
-# Output: PONG
-```
-
-Or install Redis natively:
-
-| OS | Command |
-|---|---|
-| macOS | `brew install redis && brew services start redis` |
-| Ubuntu/Debian | `sudo apt install redis-server && sudo systemctl start redis` |
-| Windows | Use Docker (recommended) or WSL2 |
-
----
-
-### 3. Connect to Redis in `server.go`
+Use `redis.ParseURL` — it reads the full Upstash URL including TLS automatically:
 
 ```go
 import (
@@ -747,16 +850,17 @@ import (
 var ctx = context.Background()
 
 func connectRedis() *redis.Client {
-    rdb := redis.NewClient(&redis.Options{
-        Addr:     os.Getenv("REDIS_URL"), // e.g. localhost:6379
-        Password: "",                      // empty if no auth
-        DB:       0,                       // default DB
-    })
+    opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
+    if err != nil {
+        log.Fatal("Invalid REDIS_URL:", err)
+    }
+
+    rdb := redis.NewClient(opt)
 
     if err := rdb.Ping(ctx).Err(); err != nil {
-        log.Fatal("Failed to connect to Redis:", err)
+        log.Fatal("Failed to connect to Upstash Redis:", err)
     }
-    fmt.Println("Connected to Redis successfully ✔")
+    fmt.Println("Connected to Upstash Redis successfully ✔")
     return rdb
 }
 ```
@@ -767,9 +871,11 @@ Call it in `main()`:
 rdb := connectRedis()
 ```
 
+> `redis.ParseURL` handles TLS, password, host, and port all from the single `REDIS_URL` string — no manual `Options{}` needed.
+
 ---
 
-### 4. Use Cases & Code Examples
+### 5. Use Cases & Code Examples
 
 #### Cache GET /students (avoid hitting DB every request)
 
@@ -777,60 +883,43 @@ rdb := connectRedis()
 app.Get("/students", func(c fiber.Ctx) error {
     cacheKey := "students:all"
 
-    // Try cache first
+    // Try Upstash cache first
     cached, err := rdb.Get(ctx, cacheKey).Result()
     if err == nil {
-        // Cache hit — return immediately
+        // Cache hit — return instantly, no DB query
         c.Set("Content-Type", "application/json")
         return c.Status(200).SendString(cached)
     }
 
-    // Cache miss — query DB
+    // Cache miss — query Neon Postgres
     var students []Student
     db.Find(&students)
 
-    // Store in Redis for 60 seconds
+    // Store in Upstash for 60 seconds
     data, _ := json.Marshal(students)
     rdb.Set(ctx, cacheKey, data, 60*time.Second)
 
     return c.Status(200).JSON(&students)
 })
 
-// Invalidate cache when data changes
+// Invalidate cache on any mutation
 app.Post("/students", func(c fiber.Ctx) error {
-    // ... create logic ...
+    var student Student
+    c.Bind().Body(&student)
+    student.AdmissionDate = time.Now()
+    student.UpdatedAt = time.Now()
+    if err := db.Create(&student).Error; err != nil {
+        return c.Status(500).JSON(fiber.Map{"message": err.Error()})
+    }
     rdb.Del(ctx, "students:all") // clear stale cache
+    io.Emit("student:created", student)
     return c.Status(201).JSON(&student)
 })
 ```
 
 ---
 
-#### Store Sessions
-
-```go
-// Save session on login
-func saveSession(rdb *redis.Client, sessionID string, userID uint64) error {
-    key := "session:" + sessionID
-    return rdb.Set(ctx, key, userID, 24*time.Hour).Err()
-}
-
-// Read session on request
-func getSession(rdb *redis.Client, sessionID string) (string, error) {
-    return rdb.Get(ctx, "session:"+sessionID).Result()
-}
-
-// Delete session on logout
-func deleteSession(rdb *redis.Client, sessionID string) error {
-    return rdb.Del(ctx, "session:"+sessionID).Err()
-}
-```
-
----
-
-#### Rate Limiting
-
-Limit each IP to 100 requests per minute:
+#### Rate Limiting (per IP, 100 req/min)
 
 ```go
 app.Use(func(c fiber.Ctx) error {
@@ -839,11 +928,11 @@ app.Use(func(c fiber.Ctx) error {
 
     count, err := rdb.Incr(ctx, key).Result()
     if err != nil {
-        return c.Next()
+        return c.Next() // fail open if Redis is down
     }
 
     if count == 1 {
-        rdb.Expire(ctx, key, time.Minute) // reset window every minute
+        rdb.Expire(ctx, key, time.Minute) // start 1-minute window
     }
 
     if count > 100 {
@@ -856,73 +945,91 @@ app.Use(func(c fiber.Ctx) error {
 
 ---
 
-#### Pub/Sub — Push Events Between Services
+#### Pub/Sub — Push Events to Socket.IO
 
-**Publisher** (e.g. after a student is created):
+Publish from any REST handler, subscribe in a goroutine and forward to Socket.IO clients:
 
 ```go
-func publishEvent(rdb *redis.Client, event string, data interface{}) {
+// Publish after a student is created
+func publishEvent(rdb *redis.Client, channel string, data interface{}) {
     payload, _ := json.Marshal(data)
-    rdb.Publish(ctx, event, payload)
+    rdb.Publish(ctx, channel, payload)
 }
 
-// In POST /students handler:
-publishEvent(rdb, "student.created", student)
-```
-
-**Subscriber** (e.g. a notification service):
-
-```go
-func subscribeEvents(rdb *redis.Client) {
-    sub := rdb.Subscribe(ctx, "student.created")
+// Subscribe and forward to all Socket.IO clients
+func subscribeAndBroadcast(rdb *redis.Client, io *sio.Server) {
+    sub := rdb.Subscribe(ctx, "student.created", "student.updated", "student.deleted")
     defer sub.Close()
 
     for msg := range sub.Channel() {
-        fmt.Println("Event received:", msg.Payload)
-        // e.g. send email, update cache, notify WebSocket clients
+        // Forward Upstash message straight to every Socket.IO client
+        io.Emit("db:event", fiber.Map{
+            "channel": msg.Channel,
+            "payload": msg.Payload,
+        })
     }
 }
 
-// Start in a goroutine so it doesn't block
-go subscribeEvents(rdb)
+// In main() — start subscriber in background
+go subscribeAndBroadcast(rdb, io)
 ```
 
----
-
-#### Redis + WebSocket — Real-time Pub/Sub
-
-Combine Redis pub/sub with WebSocket to push DB events to browsers:
+Then in each REST handler:
 
 ```go
-go func() {
-    sub := rdb.Subscribe(ctx, "student.created")
-    defer sub.Close()
-    for msg := range sub.Channel() {
-        broadcast([]byte(msg.Payload)) // send to all WS clients
-    }
-}()
+app.Post("/students", func(c fiber.Ctx) error {
+    // ... create logic ...
+    publishEvent(rdb, "student.created", student)
+    return c.Status(201).JSON(&student)
+})
+
+app.Patch("/students/:sId", func(c fiber.Ctx) error {
+    // ... update logic ...
+    publishEvent(rdb, "student.updated", fiber.Map{"id": sId})
+    return c.JSON(fiber.Map{"message": "Student data updated!"})
+})
+
+app.Delete("/students/:sId", func(c fiber.Ctx) error {
+    // ... delete logic ...
+    publishEvent(rdb, "student.deleted", fiber.Map{"id": sId})
+    return c.JSON(fiber.Map{"message": "Student Deleted"})
+})
 ```
 
-Now every time any service publishes `student.created`, all connected browsers receive it instantly.
+Frontend listens on the single `db:event` channel:
+
+```javascript
+socket.on("db:event", ({ channel, payload }) => {
+    const data = JSON.parse(payload);
+    if (channel === "student.created") console.log("New student:", data);
+    if (channel === "student.updated") console.log("Updated:", data);
+    if (channel === "student.deleted") console.log("Deleted:", data);
+});
+```
 
 ---
 
-### 5. Redis Data Types Cheat Sheet
+### 6. Test Upstash from the Dashboard
 
-| Type | Command | Use Case |
-|---|---|---|
-| String | `SET key val EX 60` | Cache, session tokens |
-| Hash | `HSET user:1 name "Ali"` | User profiles |
-| List | `RPUSH queue task1` | Job queues |
-| Set | `SADD online user:1` | Online users, tags |
-| Sorted Set | `ZADD leaderboard 95 user:1` | Rankings, scores |
-| Pub/Sub | `PUBLISH / SUBSCRIBE` | Real-time events |
+Upstash has a built-in **Data Browser** and **CLI** in the dashboard — no local redis-cli needed:
+
+1. Go to your Upstash database → **CLI** tab
+2. Run commands directly:
+
+```
+SET students:test "hello"
+GET students:test
+KEYS *
+FLUSHDB
+```
+
+Or use the **Data Browser** tab to visually inspect all keys and values.
 
 ---
 
-### 6. Redis in Docker Compose (local dev)
+### 7. Docker Compose (local dev with Upstash)
 
-Add to a `docker-compose.yml` to run both the app and Redis together:
+Since Upstash is a cloud service, your local Docker container connects to it the same way production does — just set the env var:
 
 ```yaml
 version: "3.9"
@@ -933,79 +1040,42 @@ services:
       - "5000:5000"
     environment:
       - DATABASE_URL=your_neon_connection_string
-      - REDIS_URL=redis:6379
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
+      - REDIS_URL=rediss://default:your_password@your-host.upstash.io:6379
 ```
+
+No local Redis container needed. Both local dev and production point to the same Upstash instance.
 
 ```bash
-docker compose up        # Start everything
-docker compose down      # Stop everything
-docker compose logs app  # View app logs
+docker compose up        # Start the app (Upstash is already in the cloud)
+docker compose down      # Stop the app
+docker compose logs app  # View logs
 ```
 
 ---
 
-### 7. Redis in Production (Render + Upstash)
+### Redis Data Types Cheat Sheet
 
-Render doesn't offer a free Redis add-on, so use **[Upstash](https://upstash.com)** — a free serverless Redis with a REST API.
-
-**Setup:**
-1. Go to [upstash.com](https://upstash.com) → **Create Database**
-2. Choose region closest to your Render deployment
-3. Copy the **Redis URL** (format: `redis://default:password@host:port`)
-4. Add it to Render dashboard → **Environment Variables**:
-
-| Key | Value |
-|---|---|
-| `REDIS_URL` | `redis://default:xxx@your-host.upstash.io:6379` |
-
-**Update connection code for TLS (required by Upstash):**
-
-```go
-opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
-if err != nil {
-    log.Fatal("Invalid REDIS_URL:", err)
-}
-rdb := redis.NewClient(opt)
-```
-
-`redis.ParseURL` handles TLS automatically from the URL scheme — no extra config needed.
+| Type | Upstash CLI Example | Use Case |
+|---|---|---|
+| String | `SET key val EX 60` | Cache, session tokens |
+| Hash | `HSET user:1 name "Ali"` | User profiles |
+| List | `RPUSH queue task1` | Job queues |
+| Set | `SADD online user:1` | Online users, tags |
+| Sorted Set | `ZADD leaderboard 95 user:1` | Rankings, scores |
+| Pub/Sub | `PUBLISH channel msg` | Real-time events |
 
 ---
 
-### Redis Quick Reference
-
-```bash
-# Local Redis CLI
-redis-cli ping                        # Test connection
-redis-cli set foo bar                 # Set a key
-redis-cli get foo                     # Get a key
-redis-cli keys "*"                    # List all keys
-redis-cli flushdb                     # Clear all keys (dev only!)
-redis-cli monitor                     # Watch all commands in real time
-
-# Docker
-docker run -d -p 6379:6379 redis:alpine       # Start Redis
-docker exec -it redis redis-cli               # Open CLI in container
-```
-
----
-
-### Redis Troubleshooting
+### Upstash Troubleshooting
 
 | Error | Fix |
 |---|---|
-| `connection refused` | Redis isn't running — start with Docker or `brew services start redis` |
-| `NOAUTH` error | Redis requires a password — set `Password` in client options |
-| `invalid URL` | Check `REDIS_URL` format: `redis://user:pass@host:port` |
-| Cache never expires | Always set TTL: `rdb.Set(ctx, key, val, time.Minute)` |
-| Upstash TLS error | Use `redis.ParseURL()` instead of manual `Options{}` |
+| `tls: failed to verify certificate` | Use `rediss://` not `redis://` in the URL |
+| `NOAUTH Authentication required` | Missing password — use full Upstash URL with `redis.ParseURL` |
+| `invalid URL scheme` | URL must start with `redis://` or `rediss://` |
+| Pub/Sub not firing | Upstash free tier supports pub/sub — check channel name matches exactly |
+| Cache never expires | Always set TTL: `rdb.Set(ctx, key, val, 60*time.Second)` |
+| Keys not showing in dashboard | Check **Data Browser** tab in Upstash, not the CLI |
 
 ---
 

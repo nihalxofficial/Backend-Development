@@ -23,6 +23,8 @@
 ```
 go-fiber-app/
 ├── server.go        # Main file — routes, DB connection, models
+├── Dockerfile       # Docker image definition
+├── .dockerignore    # Files to exclude from Docker build
 ├── go.mod           # Go module definition & dependencies
 ├── go.sum           # Dependency checksums (auto-generated)
 └── .env             # Environment variables (optional)
@@ -226,6 +228,213 @@ RUN go install github.com/cosmtrek/air@latest
 CMD ["air"]
 ```
 
+---
+
+## 🐳 Docker
+
+Containerize the app so it runs the same anywhere — locally, on a server, or on Render.
+
+### 1. Create `Dockerfile`
+
+```dockerfile
+# Stage 1 — Build the binary
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependency files first (layer caching)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source and build
+COPY . .
+RUN go build -o server server.go
+
+# Stage 2 — Minimal runtime image
+FROM alpine:latest
+
+WORKDIR /app
+
+# Copy only the compiled binary from the builder stage
+COPY --from=builder /app/server .
+
+EXPOSE 5000
+
+CMD ["./server"]
+```
+
+> **Two-stage build** keeps the final image tiny (~15 MB) by leaving out the Go compiler and source files.
+
+---
+
+### 2. Create `.dockerignore`
+
+```
+.env
+*.md
+.git
+.gitignore
+```
+
+> Prevents sensitive files and git history from being baked into the image.
+
+---
+
+### 3. Build & Run Locally
+
+```bash
+# Build the image
+docker build -t go-fiber-app .
+
+# Run the container (pass your Neon DSN as an env var)
+docker run -p 5000:5000 \
+  -e DATABASE_URL="your_neon_connection_string" \
+  go-fiber-app
+```
+
+API is now available at **http://localhost:5000** inside Docker ✅
+
+---
+
+### 4. Use `DATABASE_URL` from Environment
+
+Update `server.go` to read the DSN from an environment variable instead of hardcoding it:
+
+```go
+dsn := os.Getenv("DATABASE_URL")
+if dsn == "" {
+    log.Fatal("DATABASE_URL environment variable is not set")
+}
+```
+
+This makes the app work both locally and in production without changing code.
+
+---
+
+### Docker Quick Reference
+
+```bash
+docker build -t go-fiber-app .          # Build image
+docker run -p 5000:5000 go-fiber-app    # Run container
+docker ps                               # List running containers
+docker stop <container_id>              # Stop a container
+docker images                           # List local images
+docker rmi go-fiber-app                 # Remove image
+```
+
+---
+
+## ☁️ Deploy on Render
+
+Render is a free cloud platform that can deploy directly from GitHub — no servers to manage.
+
+### Prerequisites
+
+- Code pushed to a **GitHub repository**
+- A **Render account** at [render.com](https://render.com)
+- Your **Neon connection string** ready
+
+---
+
+### Option A — Deploy with Docker (Recommended)
+
+1. Go to **[render.com](https://render.com)** → **New → Web Service**
+2. Connect your GitHub repo
+3. Configure the service:
+
+| Setting | Value |
+|---|---|
+| **Name** | `go-fiber-app` |
+| **Environment** | `Docker` |
+| **Dockerfile Path** | `./Dockerfile` |
+| **Instance Type** | `Free` |
+
+4. Under **Environment Variables**, click **Add Environment Variable**:
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | `your_neon_connection_string` |
+| `PORT` | `5000` |
+
+5. Click **Create Web Service**
+
+Render builds the Docker image and deploys automatically. Every `git push` triggers a redeploy. ✅
+
+---
+
+### Option B — Deploy without Docker (Native Go)
+
+If you don't want to use Docker, Render can build Go directly.
+
+1. Go to **Render → New → Web Service**
+2. Connect your GitHub repo
+3. Configure:
+
+| Setting | Value |
+|---|---|
+| **Environment** | `Go` |
+| **Build Command** | `go build -o server server.go` |
+| **Start Command** | `./server` |
+
+4. Add environment variables same as Option A
+5. Click **Create Web Service** ✅
+
+---
+
+### Option C — `render.yaml` (Infrastructure as Code)
+
+Add a `render.yaml` file to your repo to define the service declaratively:
+
+```yaml
+services:
+  - type: web
+    name: go-fiber-app
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false        # Set manually in Render dashboard (keeps it secret)
+      - key: PORT
+        value: 5000
+```
+
+Render detects this file automatically when you connect the repo.
+
+---
+
+### Render Deployment Flow
+
+```
+git push origin main
+        ↓
+  Render detects push
+        ↓
+  Pulls latest code
+        ↓
+  Builds Docker image
+        ↓
+  Runs container
+        ↓
+  Live at https://your-app.onrender.com ✅
+```
+
+> **Note:** Free tier services spin down after 15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake up. Upgrade to a paid plan to keep it always-on.
+
+---
+
+### Render Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Build fails | Check `go.sum` is committed — run `go mod tidy` then commit |
+| `DATABASE_URL` not found | Double-check env var name in Render dashboard |
+| App crashes on start | Check Render logs → **Logs** tab in the dashboard |
+| Port not binding | Make sure `PORT` env var is set and `app.Listen(":" + port)` uses it |
+| Free tier sleeping | Expected behavior — upgrade plan or use a cron ping service |
+
+---
+
 ## 🧪 API Endpoints
 
 | Method | Endpoint | Description |
@@ -309,8 +518,13 @@ go mod init go-fiber-app        # Initialize module (do once)
 go get <package>                # Install a package
 go mod tidy                     # Remove unused dependencies
 go run server.go                # Run the server (development)
-go build -o app server.go       # Build production binary
-./app                           # Run the built binary
+go build -o server server.go    # Build production binary
+./server                        # Run the built binary
+
+docker build -t go-fiber-app .  # Build Docker image
+docker run -p 5000:5000 \
+  -e DATABASE_URL="..." \
+  go-fiber-app                  # Run Docker container
 ```
 
 ---
@@ -324,3 +538,5 @@ go build -o app server.go       # Build production binary
 | `undefined: fiber` | Run `go get github.com/gofiber/fiber/v3` |
 | Missing `sslmode=require` | Always include it for Neon connections |
 | `go.sum mismatch` | Run `go mod tidy` to fix checksums |
+| Docker build fails | Ensure `go.sum` is committed to the repo |
+| Render app sleeps | Free tier behavior — first request after idle takes ~30s |

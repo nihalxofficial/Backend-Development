@@ -26,6 +26,8 @@ export const addStudent = async(student : Student)=>{
         body: JSON.stringify(student)
     })
     const data = await res.json();
+    revalidatePath("/students")
+    revalidatePath("/dashboard");
     return data;
 }
 
@@ -38,6 +40,8 @@ export const updateStudent = async(student : Student, id: string)=>{
         body: JSON.stringify(student)
     })
     const data = await res.json();
+    revalidatePath("/students")
+    revalidatePath("/dashboard");
     return data;
 }
 export const deleteStudent = async(id: string)=>{
@@ -46,5 +50,6 @@ export const deleteStudent = async(id: string)=>{
     })
     const data = await res.json();
     revalidatePath("/students");
+    revalidatePath("/dashboard");
     return data;
 }

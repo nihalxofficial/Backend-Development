@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 //   ? process.env.API_URL
 //   : process.env.NEXT_PUBLIC_API_URL
 
-const Api = process.env.NEXT_PUBLIC_API_URL
+const Api = process.env.NEXT_PUBLIC_API_URL;
 
 type Stats = {
   totalStudents: number;
@@ -24,19 +24,33 @@ type TopPerformers = {
   department: string;
 };
 
-const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers: TopPerformers[]}) => {
+const DashboardClient = ({
+  stats,
+  topPerformers,
+}: {
+  stats: Stats;
+  topPerformers: TopPerformers[];
+}) => {
   const [newStats, setNewStats] = useState(stats);
   const [newTopPerformers, setNewPerformers] = useState(topPerformers);
 
   useEffect(() => {
-    socket.on("dashboard-updated", async () => {
-      const analytics = await fetch(`${Api}/analytics`).then(
-        (r) => r.json(),
-      );
+    console.log("Socket connected?", socket.connected);
 
-      const performers = await fetch(`${Api}/top-students`).then(
-        (r) => r.json(),
-      );
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+    });
+
+    socket.on("dashboard-updated", async () => {
+      console.log("dashboard-updated received");
+
+      const analytics = await fetch(`${Api}/analytics`, {
+        cache: "no-store",
+      }).then((r) => r.json());
+
+      const performers = await fetch(`${Api}/top-students`, {
+        cache: "no-store",
+      }).then((r) => r.json());
 
       setNewStats(analytics);
       setNewPerformers(performers);
@@ -44,6 +58,7 @@ const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers:
 
     return () => {
       socket.off("dashboard-updated");
+      socket.off("connect");
     };
   }, []);
 
@@ -165,67 +180,73 @@ const DashboardClient = ({ stats, topPerformers}: { stats: Stats; topPerformers:
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {newTopPerformers?.map((performer: TopPerformers, index: number) => (
-                <tr
-                  key={index}
-                  className="hover:bg-zinc-800/30 transition-colors"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      {index === 0 && (
-                        <span className="text-yellow-400">🥇</span>
-                      )}
-                      {index === 1 && <span className="text-gray-400">🥈</span>}
-                      {index === 2 && (
-                        <span className="text-amber-600">🥉</span>
-                      )}
-                      {index > 2 && (
-                        <span className="text-zinc-500">#{index + 1}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-linear-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                        <span className="text-xs font-medium text-white">
-                          {performer?.name.charAt(0)}
+              {newTopPerformers?.map(
+                (performer: TopPerformers, index: number) => (
+                  <tr
+                    key={index}
+                    className="hover:bg-zinc-800/30 transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {index === 0 && (
+                          <span className="text-yellow-400">🥇</span>
+                        )}
+                        {index === 1 && (
+                          <span className="text-gray-400">🥈</span>
+                        )}
+                        {index === 2 && (
+                          <span className="text-amber-600">🥉</span>
+                        )}
+                        {index > 2 && (
+                          <span className="text-zinc-500">#{index + 1}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-linear-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                          <span className="text-xs font-medium text-white">
+                            {performer?.name.charAt(0)}
+                          </span>
+                        </div>
+                        <span className="text-sm font-medium text-zinc-300">
+                          {performer?.name}
                         </span>
                       </div>
-                      <span className="text-sm font-medium text-zinc-300">
-                        {performer?.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-zinc-400">
+                        {performer?.department}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-zinc-400">
-                      {performer?.department}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-zinc-400">
-                      {performer?.age}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-yellow-400">
-                      {performer?.cgpa}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-2 bg-zinc-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-yellow-400 rounded-full"
-                          style={{ width: `${(performer?.cgpa / 4.0) * 100}%` }}
-                        />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-zinc-400">
+                        {performer?.age}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-semibold text-yellow-400">
+                        {performer?.cgpa}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 h-2 bg-zinc-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-yellow-400 rounded-full"
+                            style={{
+                              width: `${(performer?.cgpa / 4.0) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs text-zinc-400">
+                          {Math.round((performer?.cgpa / 4.0) * 100)}%
+                        </span>
                       </div>
-                      <span className="text-xs text-zinc-400">
-                        {Math.round((performer?.cgpa / 4.0) * 100)}%
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>

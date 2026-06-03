@@ -219,6 +219,13 @@ Server starts at **http://localhost:5000** ✅
 
 ---
 
+### Golang Fiber (using Air)
+
+```dockerfile
+RUN go install github.com/cosmtrek/air@latest
+CMD ["air"]
+```
+
 ## 🧪 API Endpoints
 
 | Method | Endpoint | Description |

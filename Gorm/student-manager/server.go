@@ -27,7 +27,7 @@ type Student struct {
 }
 
 func main() {
-	dsn := "postgresql://neondb_owner:npg_djwAN13DgHbI@ep-tiny-waterfall-aqi3oiex-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+	dsn := "postgresql://test_user:test_password@ep-sunny-river-xyz123.us-east-1.aws.neon.tech/testdb?sslmode=require"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
